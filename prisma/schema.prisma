@@ -1,0 +1,45 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model households {
+  id         BigInt   @id @default(autoincrement())
+  created_at DateTime @default(now())
+  name       String?  @default("Your Household")
+  admin_id   BigInt?
+
+  admin      users?   @relation("HouseholdAdmin", fields: [admin_id], references: [id])
+
+  users      users[]
+  financials financials[]
+}
+
+model users {
+  id           BigInt   @id @default(autoincrement())
+  created_at   DateTime @default(now())
+  first_name   String
+  last_name    String
+  household_id BigInt?
+  email        String   @unique
+
+  household households? @relation(fields: [household_id], references: [id])
+  adminOf   households[] @relation("HouseholdAdmin")
+
+  financials financials[]
+}
+
+model financials {
+  id           BigInt   @id @default(autoincrement())
+  created_at   DateTime @default(now())
+  household_id BigInt
+  user_id      BigInt?
+  amount       Decimal
+
+  household households @relation(fields: [household_id], references: [id])
+  user      users?     @relation(fields: [user_id], references: [id])
+}
