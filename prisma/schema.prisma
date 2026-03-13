@@ -1,6 +1,5 @@
 generator client { //creates a javascript schema in generated folder
   provider = "prisma-client-js"
-  output = "./generated"
 }
 
 datasource db { //tells prisma we are using postgresl data base
