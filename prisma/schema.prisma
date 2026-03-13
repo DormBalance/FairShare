@@ -1,0 +1,192 @@
+generator client { //creates a javascript schema in generated folder
+  provider = "prisma-client-js"
+}
+
+datasource db { //tells prisma we are using postgresl data base
+  provider = "postgresql"
+}
+
+//enums restrict the values that can be used in these feilds
+enum HouseholdRole{ //in a household, a user can only be a Admin or a Member
+  Admin
+  Member
+}
+
+enum RecurringExpenseFrequency{ //recurring expenses can only be weekly or monthly
+  Weekly
+  Monthly
+}
+
+enum SplitType{//split expenses can be equal or custom
+  Equal
+  Custom
+}
+
+//models are table defenitions, first half is the var, second col is type, third col give the var attributes such as it being unique, etc
+model households {
+  //households will have an individual:
+  id         BigInt   @id @default(autoincrement())
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  name       String?  @default("Your Household")
+  invite_code String   @unique
+  description String?
+
+  //each househould should keep track of/hold multiple:
+  members household_members[]
+  expenses expenses[]
+  expense_categories expense_categories[]
+  recurring_expenses recurring_expenses[]
+  settlements settlements[]
+
+  @@index([invite_code]) //makes so when searching tanble, dont go one by 1, use index
+
+}
+
+
+model users { 
+  //each user will have an individual:
+  id           BigInt   @id @default(autoincrement())
+  created_at   DateTime @default(now())
+  updated_at  DateTime @updatedAt
+  first_name   String
+  last_name    String
+  //household_id BigInt?
+  email        String   @unique
+
+//users can have multiple:
+  households_user_belongs_to household_members[]
+  expenses_created expenses[] @relation("ExpenseCreator")
+  expenses_paid expenses[] @relation("ExpensePayer") //individual finance track componment
+  settlements_paid settlements[] @relation("SettlementPayer") //split expenses
+  settlements_received settlements[] @relation("SettlementRecipient")
+  recurring_expenses_created recurring_expenses[] @relation("RecurringExpenseCreator")
+  recurring_expenses_paid recurring_expenses[] @relation("RecurringExpensePayer")
+  expense_splits expense_splits[]
+}
+
+model expenses { 
+  //every expense has this information:
+  id           BigInt   @id @default(autoincrement()) 
+  created_at   DateTime @default(now()) 
+  updated_at  DateTime @updatedAt  
+  description  String 
+  household_id BigInt  
+  creator_user_id      BigInt?
+  payer_user_id BigInt?
+  amount       Decimal 
+  expense_name String 
+  split_type   SplitType @default(Equal) 
+  expense_date DateTime 
+  recurring_expense_id BigInt? 
+  expense_category_id BigInt? 
+  
+  expense_category expense_categories? @relation(fields: [expense_category_id], references: [id], onDelete: SetNull) //dosent give a category if the category assigned is deleted
+  household households @relation(fields: [household_id], references: [id], onDelete: Cascade) //Cascade gets rid of all values in table if the household is deleted
+  expense_creator      users?     @relation("ExpenseCreator",fields: [creator_user_id], references: [id], onDelete: Restrict) //Restrict wont allow for the user to be deleted if they have expenses listed (can always cascade but this info is to important to accidentally lose)
+  expense_payer users? @relation("ExpensePayer", fields: [payer_user_id], references: [id], onDelete: Restrict)
+  recurring_expense recurring_expenses? @relation(fields: [recurring_expense_id], references: [id], onDelete: SetNull)
+  splits expense_splits[] //how we will handle spliiting the expeneses
+
+  @@index([payer_user_id])
+  @@index([expense_category_id])
+  @@index([household_id, expense_date])
+  @@index([recurring_expense_id])
+}
+
+model recurring_expenses{
+  //just a copy of expenses model while checking if an expense is still recurring and how frequent and when to pay again each time
+  id           BigInt   @id @default(autoincrement()) 
+  created_at   DateTime @default(now()) 
+  updated_at  DateTime @updatedAt
+  description  String 
+  household_id BigInt  
+  creator_user_id      BigInt? 
+  payer_user_id BigInt?  
+  amount       Decimal 
+  expense_name String 
+  expense_category_id BigInt? 
+  is_active Boolean @default(true) 
+  frequency RecurringExpenseFrequency
+  next_expense_date DateTime  
+
+  recurring_expense_category expense_categories? @relation(fields: [expense_category_id], references: [id], onDelete: SetNull)
+  household households @relation(fields: [household_id], references: [id], onDelete: Cascade)
+  recurring_expense_creator      users?     @relation("RecurringExpenseCreator",fields: [creator_user_id], references: [id], onDelete: Restrict)
+  recurring_expense_payer users? @relation("RecurringExpensePayer", fields: [payer_user_id], references: [id], onDelete: Restrict)
+  expenses expenses[] //each recurring expense can have multiple expenses over time 
+
+  @@index([household_id, next_expense_date]) 
+  @@index([payer_user_id])
+  @@index([creator_user_id])
+  @@index([expense_category_id])
+}
+
+model expense_categories{
+  //categories have a name are linked to a househould (we will have defaults), users can also make new
+  id BigInt @id @default(autoincrement())
+  name String
+  created_at DateTime @default(now())
+  household_id BigInt
+
+  household households @relation(fields: [household_id], references: [id], onDelete: Cascade)
+  expenses expenses[] //each category can have multiple expenses
+  recurring_expenses recurring_expenses[] //each category can have multiple recurring expenses
+
+  @@unique([name, household_id]) //categories must not be repeats within househould
+  @@index([household_id]) //many houses, many categories, need faster way to search
+
+}
+
+model household_members{
+  id BigInt @id @default(autoincrement())
+  user_id BigInt 
+  household_id BigInt
+  role HouseholdRole @default(Member)
+  time_joined DateTime @default(now())
+
+  household households @relation(fields: [household_id], references: [id], onDelete: Cascade)
+  user users @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id]) //tracks users to households faster
+  @@index([household_id, role]) //makes faster search when filtering by roles in a household
+  @@unique([user_id, household_id]) //user can only join household once
+}
+
+model settlements{
+  id BigInt @id @default(autoincrement())
+  created_at DateTime @default(now())
+  amount Decimal
+  household_id BigInt
+  payer_user_id BigInt 
+  recipient_user_id BigInt
+  payment_method String
+  payment_date DateTime @default(now())
+  
+  household households @relation(fields: [household_id], references: [id], onDelete: Cascade)
+  settlement_payer users @relation("SettlementPayer", fields: [payer_user_id], references: [id], onDelete: Restrict)
+  settlement_recipient users @relation("SettlementRecipient", fields: [recipient_user_id], references: [id], onDelete: Restrict)
+  
+  @@index([payer_user_id]) 
+  @@index([recipient_user_id]) 
+  @@index([payment_date, household_id])  //get settlements in specifics households faster via date
+}
+
+model expense_splits{
+  id BigInt @id @default(autoincrement())
+  created_at DateTime @default(now())
+  expense_id BigInt
+  user_id BigInt 
+  amount_to_pay Decimal
+  opted_out Boolean @default(false)
+
+  expense expenses @relation(fields: [expense_id], references: [id], onDelete: Cascade)
+  user users @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([expense_id])
+  @@unique([expense_id, user_id]) //only 1 split per expense per user
+
+}
+
+
