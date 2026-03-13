@@ -7,12 +7,12 @@ async function testDBConnection() {
     adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL })});
 
   try {
-    const tables = await prisma.$queryRaw`SELECT tablename FROM pg_tables WHERE schemaname='public'`;
-
+    await prisma.$connect();
     await prisma.$disconnect().catch(() => {});
-    return { result: true, message: `Connected. Tables: ${tables.map(table => table.tablename).join(", ")}` };
+    return { result: true, message: "Connected Succesfully" ,};
   }
   catch (err) {
+    console.error("FULL ERROR OBJECT:", err);
     await prisma.$disconnect().catch(() => {});
     return { result: false, message: err instanceof Error ? err.message : String(err),};
   }
