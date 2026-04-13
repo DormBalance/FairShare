@@ -129,8 +129,91 @@ Typical setup will include:
 
 ---
 
+## 🔐 Auth & Role Helpers (For Developers)
+
+All API routes should enforce authentication and roles using the shared helpers in `lib/auth_helpers.tsx`. Any endpoint can be protected in 2 lines.
+
+### Import
+```ts
+import { requireUser, requireMember, requireAdmin } from '@/lib/auth_helpers'
+```
+
+---
+
+### `requireUser(request)`
+Validates the Bearer token from the request's `Authorization` header. Throws if the user is not authenticated.
+
+Use this on any endpoint that requires a logged-in user.
+
+```ts
+export async function GET(request: NextRequest) {
+  let user
+  try {
+    user = await requireUser(request)
+  } catch {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  // user is now a verified Supabase User object
+}
+```
+
+---
+
+### `requireMember(householdId, user)`
+Checks that the authenticated user is a member of the given household. Throws if they are not.
+
+Returns `{ dbUser, member }` — the user's database row and their membership record.
+
+```ts
+let user
+try {
+  user = await requireUser(request)
+} catch {
+  return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+}
+
+let dbUser
+try {
+  ({ dbUser } = await requireMember(BigInt(householdId), user))
+} catch {
+  return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+}
+```
+
+---
+
+### `requireAdmin(householdId, user)`
+Same as `requireMember` but also checks that the user's role is `Admin`. Throws if they are not a member or not an admin.
+
+Returns `{ dbUser, member }`.
+
+```ts
+let user
+try {
+  user = await requireUser(request)
+} catch {
+  return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+}
+
+try {
+  await requireAdmin(BigInt(householdId), user)
+} catch {
+  return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+}
+```
+
+---
+
+---
+
 ## 👨‍💻 Team
 Guillermo Novillo, Anthony Johnson, Gabriel Lopez-Garcia, Zachary Suero
+
+---
+
+*FairShare – because roommates shouldn’t have to argue over Venmo screenshots.*
+
 
 ---
 
