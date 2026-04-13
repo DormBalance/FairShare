@@ -129,6 +129,101 @@ Typical setup will include:
 
 ---
 
+## 🔐 Auth & Role Helpers (For Developers)
+
+All API routes should enforce authentication and roles using the shared helpers in `lib/auth_helpers.tsx`. Any endpoint can be protected in 2 lines.
+
+### Import
+```ts
+import { requireUser, requireMember, requireAdmin } from '@/lib/auth_helpers'
+```
+
+---
+
+### `requireUser(request)`
+Validates the Bearer token from the request's `Authorization` header. Throws if the user is not authenticated.
+
+Use this on any endpoint that requires a logged-in user.
+
+```ts
+export async function GET(request: NextRequest) {
+  let user
+  try {
+    user = await requireUser(request)
+  } catch {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  // user is now a verified Supabase User object
+}
+```
+
+---
+
+### `requireMember(householdId, user)`
+Checks that the authenticated user is a member of the given household. Throws if they are not.
+
+Returns `{ dbUser, member }` — the user's database row and their membership record.
+
+```ts
+let user
+try {
+  user = await requireUser(request)
+} catch {
+  return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+}
+
+let dbUser
+try {
+  ({ dbUser } = await requireMember(BigInt(householdId), user))
+} catch {
+  return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+}
+```
+
+---
+
+### `requireAdmin(householdId, user)`
+Same as `requireMember` but also checks that the user's role is `Admin`. Throws if they are not a member or not an admin.
+
+Returns `{ dbUser, member }`.
+
+```ts
+let user
+try {
+  user = await requireUser(request)
+} catch {
+  return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+}
+
+try {
+  await requireAdmin(BigInt(householdId), user)
+} catch {
+  return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+}
+```
+
+---
+
+### Household & Auth Endpoints
+
+| Method | Endpoint | Auth Required | Description |
+|--------|----------|---------------|-------------|
+| `POST` | `/api/auth/profile` | Bearer token | Create or update the user's profile row (run once after signup) |
+| `POST` | `/api/households` | Bearer token | Create a new household; creator is set as Admin |
+| `GET` | `/api/households` | Bearer token | List all households the authenticated user belongs to |
+| `POST` | `/api/households/join` | Bearer token | Join a household using an invite code |
+| `GET` | `/api/households/[id]/members` | Member | List all members in a household |
+| `PATCH` | `/api/households/[id]/members/[userId]` | Admin | Change a member's role (`Admin` or `Member`) |
+| `DELETE` | `/api/households/[id]/members/[userId]` | Admin | Remove a member (cannot remove the last admin) |
+
+**Note:** All endpoints expect the Supabase session token as a Bearer token in the `Authorization` header:
+```
+Authorization: Bearer <supabase_session_token>
+```
+
+---
+
 ## 👨‍💻 Team
 Guillermo Novillo, Anthony Johnson, Gabriel Lopez-Garcia, Zachary Suero
 
