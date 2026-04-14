@@ -205,27 +205,15 @@ try {
 
 ---
 
-### Household & Auth Endpoints
-
-| Method | Endpoint | Auth Required | Description |
-|--------|----------|---------------|-------------|
-| `POST` | `/api/auth/profile` | Bearer token | Create or update the user's profile row (run once after signup) |
-| `POST` | `/api/households` | Bearer token | Create a new household; creator is set as Admin |
-| `GET` | `/api/households` | Bearer token | List all households the authenticated user belongs to |
-| `POST` | `/api/households/join` | Bearer token | Join a household using an invite code |
-| `GET` | `/api/households/[id]/members` | Member | List all members in a household |
-| `PATCH` | `/api/households/[id]/members/[userId]` | Admin | Change a member's role (`Admin` or `Member`) |
-| `DELETE` | `/api/households/[id]/members/[userId]` | Admin | Remove a member (cannot remove the last admin) |
-
-**Note:** All endpoints expect the Supabase session token as a Bearer token in the `Authorization` header:
-```
-Authorization: Bearer <supabase_session_token>
-```
-
 ---
 
 ## 👨‍💻 Team
 Guillermo Novillo, Anthony Johnson, Gabriel Lopez-Garcia, Zachary Suero
+
+---
+
+*FairShare – because roommates shouldn’t have to argue over Venmo screenshots.*
+
 
 ---
 
