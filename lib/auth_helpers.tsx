@@ -1,70 +1,36 @@
-import {supabase} from "./supabaseClient";
-import { PrismaClient } from '@prisma/client';
-import { PrismaPg } from '@prisma/adapter-pg';
+// Shared auth/role helpers used across all API routes.
+// requireUser validates the Bearer token; requireMember/requireAdmin check household membership and role.
+// Pattern referenced from Supabase Auth docs (getUser with JWT) and Next.js docs (API route protection).
+// AI was used to speed up translating those docs into this boilerplate.
 
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
-const prisma = new PrismaClient({adapter});
+import { type User } from '@supabase/supabase-js'
+import { type NextRequest } from 'next/server'
+import { supabase } from './supabaseClient'
+import { prisma } from './prisma'
 
-export async function requireUser() {
-    const { data: {user} } = await supabase.auth.getUser();
-
-    if(!user){
-        throw Error('User not found');
-    }
-    return user;
+export async function requireUser(request: NextRequest): Promise<User> {
+  const auth = request.headers.get('Authorization')
+  if (!auth?.startsWith('Bearer ')) throw new Error('Unauthorized')
+  const token = auth.slice(7)
+  const { data: { user }, error } = await supabase.auth.getUser(token)
+  if (error || !user) throw new Error('Unauthorized')
+  return user
 }
 
-export async function requireMembership(householdid: bigint) {
+export async function requireMember(householdId: bigint, user: User) {
+  const dbUser = await prisma.users.findFirst({ where: { email: user.email } })
+  if (!dbUser) throw new Error('User profile not found')
 
-    const user = await requireUser();
-    if (!user) {
-        throw Error('User not found');
-    }
+  const member = await prisma.household_members.findFirst({
+    where: { household_id: householdId, user_id: dbUser.id },
+  })
+  if (!member) throw new Error('Forbidden')
 
-    const database_user = await prisma.users.findFirst({where: {email: user.email}});
-    if (!database_user) {
-        throw Error('User not found');
-    }
-    const membership = await prisma.household_members.findFirst({
-        where:
-            {
-                household_id: householdid,
-                user_id: database_user.id
-            },
-    });
-
-    if (!membership) {
-        return false;
-    }
-    else{
-        return true;
-    }
+  return { dbUser, member }
 }
 
-    export async function requireAdmin(householdid: bigint): Promise<boolean> {
-
-        const user = await requireUser();
-        if (!user) {
-            throw Error('User not found');
-        }
-
-        const database_user = await prisma.users.findFirst({where: {email: user.email}});
-        if (!database_user) {
-            throw Error('User not found');
-        }
-        const membership = await prisma.household_members.findFirst({
-            where:
-                {user_id: database_user.id},
-        });
-
-        if (!membership) {
-            throw Error('Not a member of that household');
-        }
-
-        if (membership.role == 'Admin') {
-            return true;
-        } else {
-            return false;
-        }
-    }
-
+export async function requireAdmin(householdId: bigint, user: User) {
+  const { dbUser, member } = await requireMember(householdId, user)
+  if (member.role !== 'Admin') throw new Error('Forbidden')
+  return { dbUser, member }
+}
