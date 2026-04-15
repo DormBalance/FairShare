@@ -93,7 +93,7 @@ export async function getExpenseCategory(householdId: string, expenseCategoryId:
     }
 
     let result = await response.json();
-    return successResponse(JSON.parse(result));
+    return successResponse(result);
   }
 
   catch (err) {
