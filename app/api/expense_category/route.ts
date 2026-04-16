@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
   if (!curCategory)
     return NextResponse.json({ error: "Expense category not found" }, { status: 404 });
 
-  return NextResponse.json({ category_name: curCategory.name });
+  return NextResponse.json({ success: true, category_name: curCategory.name });
 }
 
 // Route: POST /api/expense_category

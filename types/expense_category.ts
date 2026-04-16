@@ -8,10 +8,10 @@ export type CreateExpenseCategoryRequest = {
 export type CreateExpenseCategoryResponse = {
   category_id: string;
   category_name: string;
-  status: number;
 };
 
 export type GetExpenseCategoryResponse = {
+  id: string;
   category_name: string;
 };
 

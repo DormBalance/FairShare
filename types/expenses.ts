@@ -11,7 +11,7 @@ export type CreateExpenseRequest = {
   split_type: SplitType;
   expense_date: string;
   creator_user_id: string;
-  participants: ExpenseParticipant[];
+  participants?: ExpenseParticipant[];
   household_id: string;
   payer_user_id: string;
   description?: string;
@@ -59,6 +59,9 @@ export type CreateExpenseResponse = {
   split_type: SplitType;
   recurring_expense_id?: string;
   expense_category_id?: string;
+  included_user_ids?: string[];
+  excluded_user_ids?: string[];
+  participants: ExpenseParticipant[];
 };
 
 export type GetExpenseResponse = {

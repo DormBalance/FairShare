@@ -93,7 +93,10 @@ export async function getExpenseCategory(householdId: string, expenseCategoryId:
     }
 
     let result = await response.json();
-    return successResponse(result);
+    return successResponse({
+      id: expenseCategoryId,
+      category_name: result.category_name
+    });
   }
 
   catch (err) {
@@ -115,7 +118,10 @@ export async function createExpenseCategory(data: CreateExpenseCategoryRequest):
     }
 
     let result = await response.json();
-    return successResponse(result);
+    return successResponse({
+      category_id: result.category_id,
+      category_name: result.category_name
+    });
   }
   catch (err) {
     return failResponse(handleErrorMessage(err));
