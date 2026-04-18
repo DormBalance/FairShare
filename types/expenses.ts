@@ -81,3 +81,10 @@ export type GetExpenseResponse = {
     recurring_expense_id?: string;
     expense_category_id?: string;
 };
+
+export type HouseholdMember = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  role: string;
+}

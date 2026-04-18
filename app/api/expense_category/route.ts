@@ -11,21 +11,34 @@ export async function GET(request: NextRequest) {
   let householdId = request.nextUrl.searchParams.get('household_id');
   let expenseCategoryId = request.nextUrl.searchParams.get('expense_category_id');
 
-  if (!householdId || !expenseCategoryId)
-    return NextResponse.json({ error: "household_id and expense_category_id must be provided" }, { status: 400 });
-
-  let curCategory = await prisma.expense_categories.findFirst({
-    where: {
-      id: BigInt(expenseCategoryId),
-      household_id: BigInt(householdId)
-    },
-    select: { id: true, name: true }
-  });
-
-  if (!curCategory)
-    return NextResponse.json({ error: "Expense category not found" }, { status: 404 });
-
-  return NextResponse.json({ success: true, category_name: curCategory.name });
+  try{
+    if(expenseCategoryId){
+      let curCategory = await prisma.expense_categories.findFirst({
+      where: {
+        id: BigInt(expenseCategoryId),
+        household_id: BigInt(householdId)
+        },
+        select: { id: true, name: true }
+        });
+        
+        if (!curCategory)
+          return NextResponse.json({ error: "Expense category not found" }, { status: 404 });
+        
+        return NextResponse.json({ success: true, category_name: curCategory.name });
+      }
+//returns all catregories for a household, will be useful for drop down feature when creating or editing an expense.
+    let categories = await prisma.expense_categories.findMany({
+      where: 
+      {
+      household_id: BigInt(householdId)},
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' }
+    });
+    return NextResponse.json({success: true, categories: categories.map(category => ({ category_id: category.id.toString(), category_name: category.name })) });
+} catch(err){
+  console.error('Error fetching expense categories:', err);
+  return NextResponse.json({ error: "Failed to fetch expense categories" }, { status: 500 }); 
+  }
 }
 
 // Route: POST /api/expense_category
