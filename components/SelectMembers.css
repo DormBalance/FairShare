@@ -1,0 +1,69 @@
+.member-selection {
+  display: flex;
+  flex-direction: row;
+}
+
+.participation-param {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+}
+
+.participation-param > div {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 5px;
+  border-radius: 6px;
+  border: 1px solid lightgray;
+}
+
+.member-selection label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  color: black;
+  cursor: pointer;
+}
+
+.input {
+  border: 1px solid lightgray;
+}
+
+.participation-param input[type=number] {
+  width: 80px;
+  padding: 5px 8px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  border: 1.5px solid black;
+  border-radius: 6px;
+  outline: none;
+  color: black;
+  background: white;
+  text-align: right;
+}
+
+.participation-param input[type=number]:focus {
+  border-color: black;
+}
+
+.participation-param input[type=number]:disabled {
+  background: whitesmoke;
+  color: silver;
+  border-color: black;
+}
+
+/* From Stack Overflow: https://stackoverflow.com/questions/3790935/can-i-hide-the-html5-number-input-s-spin-box */
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+}
+
+input[type=number] {
+  -moz-appearance: textfield;
+  appearance: none;
+}

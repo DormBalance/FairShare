@@ -1,21 +1,193 @@
-/* Import 'Inter' font */
-@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap');
-
-
 * {
     font-family: 'Inter', sans-serif;
+    box-sizing: border-box;
+}
+
+label {
+    color: #444;
+    font-size: 14px;
+    display: block;
+    margin-bottom: 6px;
+}
+
+.overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal {
+    background: white;
+    padding: 32px 28px 24px;
+    width: 500px;
+    border-radius: 16px;
+    border: 1px solid #e8e8e8;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+}
+
+.topbar h2 {
+    font-size: 18px;
     font-weight: 600;
+    margin: 0;
+    color: #111;
 }
 
-h1 {
-    font-size: 3rem;
+.topbar button {
+    background: #f5f5f5;
+    border: none;
+    font-size: 16px;
+    color: #999;
+    cursor: pointer;
+    padding: 6px 8px;
+    border-radius: 8px;
+    transition: background 0.15s, color 0.15s;
 }
 
-button {
-    font-size: xx-large;
-    background-color: white;
+.topbar button:hover {
+    background: #eee;
+    color: #333;
+}
+
+.input {
+    padding: 8px 10px;
+    font-size: 14px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    outline: none;
+    width: 100%;
     color: black;
-    border-color: black;
-    border: 2px solid black;
-    border-radius: 4px;
+    background: white;
+    transition: border-color 0.2s;
 }
+
+
+.input-box:focus-within {
+    border-color: black;
+}
+
+.split-type {
+    display: flex;
+    background: lightgray;
+    border-radius: 10px;
+    padding: 5px;
+    position: relative;
+}
+
+.split-type button {
+    flex: 1;
+    padding: 8px;
+    font-size: 14px;
+    background: transparent;
+    color: #888;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    position: relative;
+    z-index: 1;
+    transition: color 0.2s;
+}
+
+.split-type button.active {
+    color: white;
+}
+
+.split-type::before {
+    content: '';
+    position: absolute;
+    top: 4px;
+    bottom: 4px;
+    left: 4px;
+    width: calc(50% - 4px);
+    background: #222;
+    border-radius: 8px;
+    transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 0;
+}
+
+.split-type.slide-right::before {
+    transform: translateX(100%);
+}
+
+.actions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    margin-top: 6px;
+}
+
+.actions .btn-submit {
+    width: 100%;
+    padding: 13px;
+    font-size: 15px;
+    font-weight: 600;
+    background: #111;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.actions .btn-submit:hover {
+    background: #333;
+}
+
+.actions .btn-cancel {
+    background: none;
+    border: none;
+    font-size: 14px;
+    color: #bbb;
+    cursor: pointer;
+    padding: 0;
+    transition: color 0.15s;
+}
+
+.actions .btn-cancel:hover {
+    color: #555;
+}
+
+.error {
+    color: #c0392b;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+#deadline {
+    padding: 10px 12px;
+    font-size: 14px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    outline: none;
+    color: #111;
+    background: #fafafa;
+    transition: border-color 0.2s;
+}
+
+#deadline:focus {
+    border-color: #555;
+    background: white;
+}
+
+.hor {
+    display: flex;
+    gap: 6px;
+}
+
+.cost::placeholder               { color: black; opacity: 1; }
+.cost::-webkit-input-placeholder { color: black; }
+.cost::-moz-placeholder          { color: black; opacity: 1; }
+.cost:-ms-input-placeholder      { color: black; }
