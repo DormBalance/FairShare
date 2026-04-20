@@ -265,6 +265,34 @@ export async function POST(request: NextRequest) {
             await tx.expense_splits.createMany({
                 data: splitData
             });
+
+            // Create the first regular expense from this recurring expense: Short clause written by Copilot. 
+            const expense = await tx.expenses.create({
+                data: {
+                    expense_name,
+                    description: description.trim(),
+                    household_id: householdID,
+                    creator_user_id: creatorUserID,
+                    payer_user_id: payerUserID,
+                    amount: billAmount,
+                    split_type: resolvedSplitType,
+                    expense_date: nextExpenseDate,
+                    expense_category_id: expense_category_id ? BigInt(expense_category_id) : null,
+                    recurring_expense_id: recurringExpense.id,
+                },
+            });
+
+            const expenseSplitData = Rows.map((row) => ({
+                user_id: row.UserID,
+                opted_out: row.OptStatus,
+                amount_to_pay: row.Amount,
+                expense_id: expense.id,
+            }));
+
+            await tx.expense_splits.createMany({
+                data: expenseSplitData
+            }); //Copilot code end.
+
             return recurringExpense;
         });
 

@@ -88,3 +88,62 @@ export type HouseholdMember = {
   last_name: string;
   role: string;
 }
+
+export type RecurringExpenseFrequency = 'Weekly' | 'Monthly';
+
+export type GetRecurringExpenseResponse = {
+  id: string;
+  expense_name: string;
+  description:string;
+  amount: string | number;
+  frequency: RecurringExpenseFrequency;
+  next_expense_date: string;
+  is_active: boolean;
+  split_type: SplitType;
+  household_id: string;
+  creator_user_id: string;
+  payer_user_id: string;
+  expense_category_id?: string;
+  recurring_expense_creator: UserInfo;
+  recurring_expense_payer: UserInfo;
+  splits: ExpenseSplit[];
+}
+
+export type RunDueResponse = {
+  due_count: number;
+  created_count: number;
+  skipped_count: number;
+  details: {
+    recurring_expense_id: string;
+    expense_id?: string;
+    status: 'created' | 'skipped';
+  }[]
+}
+
+export type CreateSettlementRequest = {
+  household_id: string;
+  payer_user_id: string;
+  recipient_user_id: string;
+  amount: string | number;
+  payment_method: string;
+  payment_date?: string;
+}
+
+export type GetSettlementResponse = {
+  id: string;
+  household_id: string;
+  payer_user_id: string;
+  recipient_user_id: string;
+  amount: string | number;
+  payment_method: string;
+  payment_date: string;
+  created_at: string;
+  settlement_payer: UserInfo;
+  settlement_recipient: UserInfo;
+}
+
+export type BalanceEntry = {
+  from: string;
+  to: string;
+  amount: string;
+}

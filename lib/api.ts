@@ -1,5 +1,7 @@
 // import all types for expenses in types/expenses.ts
-import { CreateExpenseRequest, ExpenseFilters, GetExpenseResponse, CreateExpenseResponse, HouseholdMember} from '@/types';
+import { CreateExpenseRequest, ExpenseFilters, GetExpenseResponse, CreateExpenseResponse, 
+  HouseholdMember, GetRecurringExpenseResponse, RunDueResponse, CreateSettlementRequest, 
+  GetSettlementResponse, BalanceEntry} from '@/types';
 import { CreateExpenseCategoryRequest, GetExpenseCategoryResponse, CreateExpenseCategoryResponse } from '@/types/expense_category';
 
 // #region API Result Type and Helper Functions
@@ -163,4 +165,92 @@ export async function getHouseholdMembers(userID: string): Promise<Result<Househ
     return failResponse(handleErrorMessage(err));
   }
   
+}
+
+export async function getRecurringExpenses(householdId: string): Promise<Result<GetRecurringExpenseResponse[]>> {
+  let url = `/api/recurring_expenses?household_id=${encodeURIComponent(householdId)}`;
+  let response = await fetch(url);
+  try {
+    if (!response.ok) {
+      let error = await response.json();
+      return failResponse(error.error);
+    }
+
+    let result = await response.json();
+    return successResponse(result.recurring_expenses);
+  } catch (err) {
+    return failResponse(handleErrorMessage(err));
+  }
+}
+
+export async function runDueRecurringExpenses(): Promise<Result<RunDueResponse>> {
+  let response = await fetch('/api/recurring_expenses/run_due', { method: 'POST' });
+  
+  try {
+    if (!response.ok) {
+      let error = await response.json();
+      return failResponse(error.error);
+    }
+
+    let result = await response.json();
+    return successResponse(result.summary);
+  } catch (err) {
+    return failResponse(handleErrorMessage(err));
+  }
+}
+
+export async function getSettlements(householdID: string): Promise<Result<GetSettlementResponse[]>> {
+  try {
+    let url = `/api/settlements?household_id=${encodeURIComponent(householdID)}`;
+    let response = await fetch(url);
+
+    if (!response.ok) {
+      let error = await response.json();
+      return failResponse(error.error);
+    }
+
+    let result = await response.json();
+    return successResponse(result.settlements);
+
+  } catch (err) {
+    return failResponse(handleErrorMessage(err));
+  }
+}
+
+export async function createSettlement(data: CreateSettlementRequest): Promise<Result<GetSettlementResponse>> {
+  try {
+    let response = await fetch('/api/settlements', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      let error = await response.json();
+      return failResponse(error.error);
+    }
+
+    let result = await response.json();
+    return successResponse(result.settlement);
+
+  } catch (err) {
+    return failResponse(handleErrorMessage(err));
+  }
+}
+
+export async function getBalances(householdID: string): Promise<Result<BalanceEntry[]>> {
+  try {
+    let url = `/api/balances?household_id=${encodeURIComponent(householdID)}`;
+    let response = await fetch(url);
+
+    if (!response.ok) {
+      let error = await response.json();
+      return failResponse(error.error);
+    }
+
+    let result = await response.json();
+    return successResponse(result.balances);
+    
+  } catch (err) {
+    return failResponse(handleErrorMessage(err));
+  }
 }

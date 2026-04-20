@@ -1,0 +1,45 @@
+.frequency-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #eef;
+    color: #444;
+}
+
+.status-badge-active {
+    color: #1a7a4a;
+    font-weight: 600;
+}
+
+.status-badge-inactive {
+    color: #999;
+    font-weight: 500;
+}
+
+.run-due-btn {
+    background: #ffffff;
+    color: #1a1a1a;
+    border: 1px solid #e2e0db;
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.run-due-btn:hover {
+    background: #f0eeeb;
+}
+
+.run-due-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.run-due-message{
+    font-size: 14px;
+    padding: 8px 0;
+    color: #1a7a4a;
+}
