@@ -119,3 +119,31 @@ export type RunDueResponse = {
     status: 'created' | 'skipped';
   }[]
 }
+
+export type CreateSettlementRequest = {
+  household_id: string;
+  payer_user_id: string;
+  recipient_user_id: string;
+  amount: string | number;
+  payment_method: string;
+  payment_date?: string;
+}
+
+export type GetSettlementResponse = {
+  id: string;
+  household_id: string;
+  payer_user_id: string;
+  recipient_user_id: string;
+  amount: string | number;
+  payment_method: string;
+  payment_date: string;
+  created_at: string;
+  settlement_payer: UserInfo;
+  settlement_recipient: UserInfo;
+}
+
+export type BalanceEntry = {
+  from: string;
+  to: string;
+  amount: string;
+}

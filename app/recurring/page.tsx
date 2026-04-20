@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
-import { getRecurringExpenses, runDueRecurringExpenses } from "@/lib/api";
+import { getRecurringExpenses } from "@/lib/api";
 import { GetRecurringExpenseResponse } from "@/types";
 import CreateExpenseModal from "@/components/CreateExpenseModal";
 import "../dashboard/dashboard.css";
@@ -29,8 +29,7 @@ export default function RecurringPage() {
     let [loading, setLoading] = useState<boolean>(true);
     let [error, setError] = useState<string>("");
     let [showCreateModal, setShowCreateModal] = useState<boolean>(false);
-    let [runningDue, setRunningDue] = useState<boolean>(false);
-    let [runDueMessage, setRunDueMessage] = useState<string>("");
+
 
     async function loadRecurringExpenses() {
         if (!householdID) return;
@@ -49,26 +48,6 @@ export default function RecurringPage() {
         setLoading(false);
     }
 
-    async function handleRunDue() {
-        setRunningDue(true);
-        setRunDueMessage("");
-        setError("");
-
-        let result = await runDueRecurringExpenses();
-
-        if (result.success === false) {
-            setError(result.error);
-            setRunningDue(false);
-            return;
-        }
-
-        let summary = result.data;
-        setRunDueMessage(
-            `Created ${summary.created_count} expense(s), skipped ${summary.skipped_count} expenses.`
-        );
-        setRunningDue(false);
-    }
-
     useEffect(() => { loadRecurringExpenses() }, [householdID]);
 
     return (
@@ -80,17 +59,12 @@ export default function RecurringPage() {
                         onClick={() => setShowCreateModal(true)}>
                         Add Recurring Expense
                     </button>
-                    <button className="run-due-btn"
-                        onClick={handleRunDue}
-                        disabled={runningDue}>
-                        {runningDue ? "Running..." : "Run Due Expenses"}
-                    </button>
+
                 </div>
             </div>
 
             {error && <p style={{ color: "red", marginBottom: 16}}>{error}</p>}
             {loading && <p style={{ color: "#888", marginBottom: 16}}>Loading...</p>}
-            {runDueMessage && <p className="run-due-message">{runDueMessage}</p>}
 
             <div className="recent-expenses-card">
                 <div className="recent-expenses-row recent-expenses-row-header">
