@@ -49,11 +49,46 @@ button {
     stroke-width: 1.9;
 }
 
+.topbar-profile-wrapper {
+    position: relative;
+}
+
 .topbar-profile{
     display: flex;
     align-items: center;
     gap: 12px;
     color: #2b2b2b;
+}
+
+.topbar-dropdown {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    background: #ffffff;
+    border: 1px solid #e1e1e3;
+    border-radius: 10px;
+    padding: 4px;
+    min-width: 90px;
+    z-index: 100;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+}
+
+.topbar-dropdown-item {
+    width: 100%;
+    text-align: left;
+    padding: 7px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #c0392b !important;
+    border-radius: 6px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-family: Arial;
+}
+
+.topbar-dropdown-item:hover {
+    background: #f6f6f7;
 }
 
 .topbar-profile-picture {
@@ -162,6 +197,8 @@ button {
   display: flex;
   flex-direction: column;
   gap: 3px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .profile-name{
@@ -174,6 +211,25 @@ button {
     font-size: 12px;
     font-weight: 500;
     color: #787878;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    width: 100%;
+}
+
+/* AI wrote this hover expand behavior */
+.profile-info:has(.profile-email:hover) {
+    overflow: visible;
+}
+
+.profile-email:hover {
+    overflow: visible;
+    white-space: nowrap;
+    text-overflow: unset;
+    background: #ffffff;
+    position: relative;
+    z-index: 10;
+    width: max-content;
 }
 
 

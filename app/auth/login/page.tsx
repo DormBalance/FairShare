@@ -1,6 +1,6 @@
 'use client';
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/app/auth/auth";
 import { supabase } from "@/lib/supabaseClient";
 import "./login.css";
@@ -27,8 +27,9 @@ async function createProfile(token: string, firstName: string, lastName: string)
 export default function LoginPage() {
     const { signIn, signUp } = useAuth();
     const router = useRouter();
+    const searchParams = useSearchParams();
 
-    const [isSignUp, setIsSignUp] = useState(false);
+    const [isSignUp, setIsSignUp] = useState(searchParams.get("signup") === "true");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [firstName, setFirstName] = useState("");
@@ -100,7 +101,7 @@ export default function LoginPage() {
                                     type="text"
                                     value={firstName}
                                     onChange={(e) => setFirstName(e.target.value)}
-                                    placeholder="Anthony"
+                                    placeholder="Bob"
                                     required
                                 />
                             </div>
@@ -111,7 +112,7 @@ export default function LoginPage() {
                                     type="text"
                                     value={lastName}
                                     onChange={(e) => setLastName(e.target.value)}
-                                    placeholder="Johnson"
+                                    placeholder="Smith"
                                     required
                                 />
                             </div>

@@ -2,6 +2,7 @@
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/app/auth/auth";
+import { supabase } from "@/lib/supabaseClient";
 import "./households.css";
 
 const CODE_LENGTH = 8;
@@ -69,6 +70,7 @@ export default function HouseholdsPage() {
             return;
         }
 
+        await supabase.auth.updateUser({ data: { household_id: String(data.id) } });
         router.push("/dashboard");
     }
 
@@ -94,6 +96,7 @@ export default function HouseholdsPage() {
             return;
         }
 
+        await supabase.auth.updateUser({ data: { household_id: String(data.id) } });
         router.push("/dashboard");
     }
 

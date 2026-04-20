@@ -1,0 +1,56 @@
+/*same design scheme as the other pages with the help of ai but modified to look similar to the mockups*/
+
+.landing-page {
+    min-height: 100vh;
+    background: #f6f6f7;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: Arial;
+}
+
+.landing-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+}
+
+.landing-logo {
+    color: #1a1a1a;
+    margin-bottom: 8px;
+}
+
+.landing-title {
+    font-size: 64px;
+    font-weight: 700;
+    color: #1f1f1f;
+    margin: 0;
+    letter-spacing: -1px;
+}
+
+.landing-subtitle {
+    font-size: 18px;
+    color: #787878;
+    margin: 0;
+}
+
+.landing-btn {
+    margin-top: 16px;
+    background: #1a1a1a;
+    color: #ffffff;
+    border: none;
+    border-radius: 12px;
+    padding: 16px 48px;
+    font-size: 18px;
+    font-weight: 600;
+    font-family: Arial;
+    cursor: pointer;
+    text-decoration: none;
+    transition: opacity 0.15s;
+    display: inline-block;
+}
+
+.landing-btn:hover {
+    opacity: 0.85;
+}

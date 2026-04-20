@@ -3,7 +3,7 @@
 //lines 4 to 49 are just copy and pasted from dashboard page
 
 import { useEffect, useState } from "react";
-//import { useAuth } from "@/app/auth/auth";
+import { useAuth } from "@/app/auth/auth";
 import DashboardLayout from "@/components/DashboardLayout";
 import { getExpenses } from "@/lib/api";
 import { GetExpenseResponse } from "@/types";
@@ -52,18 +52,39 @@ function generateStatusText(expense: GetExpenseResponse, currentUser: string): s
 
 
 export default function ExpensesPage() {
-    //copy and pasted from dashboar page
-    //const {user} = useAuth();
-    let householdID: string = "1"; //these are hardocded values based on values that are currently in table. can delete once we have authentication.
-    let currUser = "2";
-    //let householdID: string = user?.user_metadata?.household_id ?? "";
-    //let currUser = user?.id ?? "";
+    const { session, user } = useAuth();
+    let [householdID, setHouseholdID] = useState("");
+    let [currUser, setCurrUser] = useState("");
     let [expenses, setExpenses] = useState<GetExpenseResponse[]>([]);
     let[loading, setLoading] = useState(true);
     let [error, setError] = useState("");
     let [showCreateModal, setShowCreateModal] = useState(false);
     let[tab, setTab] = useState<"all" | "yours">("all");
     let[search, setSearch] = useState("");
+
+    // Claude debug: expenses weren't loading because currUser was the Supabase UUID, not the Prisma DB user ID.
+    // Fixed by copying the household + members fetch pattern from dashboard/page.tsx.
+    useEffect(() => {
+        if (!session?.access_token) return;
+        async function loadHousehold() {
+            const res = await fetch("/api/households", {
+                headers: { "Authorization": `Bearer ${session.access_token}` },
+            });
+            if (!res.ok) return;
+            const data = await res.json();
+            if (data.length === 0) return;
+            const household = data[0];
+            setHouseholdID(String(household.id));
+            const membersRes = await fetch(`/api/households/${household.id}/members`, {
+                headers: { "Authorization": `Bearer ${session.access_token}` },
+            });
+            if (!membersRes.ok) return;
+            const members = await membersRes.json();
+            const me = members.find((m: any) => m.email === user?.email);
+            if (me) setCurrUser(String(me.id));
+        }
+        loadHousehold();
+    }, [session]);
 
     async function loadExpenses(){
         if (!householdID) return;
@@ -83,7 +104,7 @@ export default function ExpensesPage() {
 
     useEffect(() => {
         loadExpenses();
-    }, []);
+    }, [householdID]);
 
     let expensesFilteredByTab;
     if (tab === "all"){
