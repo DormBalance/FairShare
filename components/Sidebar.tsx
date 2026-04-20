@@ -14,7 +14,7 @@ export default function Sidebar() {
         <aside className="sidebar">
             <nav className = "sidebar-navigation">
                 {navigationComponents.map((component) => (
-                    <Link key={component.label} href={component.href} className={component.active ? "sidebar-item active" : "sidebar-item"}> //this line was generated with copilot
+                    <Link key={component.label} href={component.href} className={component.active ? "sidebar-item active" : "sidebar-item"}>
                         <span className = "sidebar-item-icon">{component.icon}</span>
                         <span> {component.label}</span>
                     </Link>
