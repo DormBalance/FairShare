@@ -7,9 +7,10 @@ export default function Topbar(){
 
     if (!user) return null;
 
-    // TODO: replace email-based fallbacks with first_name/last_name from users table
-    const initials = user.email[0].toUpperCase();
-    const displayName = user.email;
+    const firstName = user.user_metadata?.first_name ?? "";
+    const lastName = user.user_metadata?.last_name ?? "";
+    const initials = firstName && lastName ? `${firstName[0]}${lastName[0]}`.toUpperCase() : user.email[0].toUpperCase();
+    const displayName = firstName && lastName ? `${firstName} ${lastName[0]}.` : user.email;
 
     return(
         <header className = "topbar">

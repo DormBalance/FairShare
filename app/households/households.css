@@ -1,7 +1,6 @@
-
 /*same design scheme as the other pages with the help of ai but modified to look similar to the mockups*/
 
-.login-page {
+.households-page {
     min-height: 100vh;
     background: #f6f6f7;
     display: flex;
@@ -10,7 +9,7 @@
     font-family: Arial;
 }
 
-.login-card {
+.households-card {
     background: #ffffff;
     border: 1px solid #e1e1e3;
     border-radius: 20px;
@@ -19,42 +18,47 @@
     max-width: 420px;
 }
 
-.login-header {
+.households-header {
     margin-bottom: 32px;
 }
 
-.login-title {
+.households-title {
     font-size: 28px;
     font-weight: 700;
     color: #1f1f1f;
     margin: 0 0 8px 0;
 }
 
-.login-subtitle {
+.households-subtitle {
     font-size: 15px;
     color: #787878;
     margin: 0;
 }
 
-.login-form {
+.households-form {
     display: flex;
     flex-direction: column;
     gap: 20px;
 }
 
-.login-field {
+.households-field {
     display: flex;
     flex-direction: column;
     gap: 8px;
 }
 
-.login-label {
+.households-label {
     font-size: 14px;
     font-weight: 600;
     color: #232323;
 }
 
-.login-input {
+.households-optional {
+    font-weight: 400;
+    color: #787878;
+}
+
+.households-input {
     border: 1px solid #e1e1e3;
     border-radius: 10px;
     padding: 12px 14px;
@@ -66,17 +70,17 @@
     transition: border-color 0.15s;
 }
 
-.login-input:focus {
+.households-input:focus {
     border-color: #1a1a1a;
 }
 
-.login-error {
+.households-error {
     font-size: 14px;
     color: #c0392b;
     margin: 0;
 }
 
-.login-btn {
+.households-btn {
     background: #1a1a1a;
     color: #ffffff;
     border: none;
@@ -90,23 +94,23 @@
     transition: opacity 0.15s;
 }
 
-.login-btn:hover:not(:disabled) {
+.households-btn:hover:not(:disabled) {
     opacity: 0.85;
 }
 
-.login-btn:disabled {
+.households-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
 }
 
-.login-toggle {
+.households-toggle {
     text-align: center;
     font-size: 14px;
     color: #787878;
     margin: 24px 0 0 0;
 }
 
-.login-toggle-btn {
+.households-toggle-btn {
     background: none;
     border: none;
     font-size: 14px;
@@ -118,12 +122,31 @@
     font-family: Arial;
 }
 
-.login-toggle-btn:hover {
+.households-toggle-btn:hover {
     text-decoration: underline;
 }
 
-.login-name-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
+.code-inputs {
+    display: flex;
+    gap: 7px;
+}
+
+.code-input {
+    width: 36px;
+    height: 42px;
+    border: 1px solid #e1e1e3;
+    border-radius: 8px;
+    text-align: center;
+    font-size: 16px;
+    font-weight: 600;
+    font-family: Arial;
+    color: #232323;
+    background: #ffffff;
+    outline: none;
+    transition: border-color 0.15s;
+    caret-color: transparent;
+}
+
+.code-input:focus {
+    border-color: #1a1a1a;
 }

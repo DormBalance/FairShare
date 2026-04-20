@@ -1,8 +1,7 @@
 "use client";
- 
-//NOTE WITH Authentication, uncoment the uncommented lines!
+
 import { useEffect, useState } from "react";
-//import { useAuth } from "@/app/auth/auth";
+import { useAuth } from "@/app/auth/auth";
 import DashboardLayout from "@/components/DashboardLayout";
 import StatCard from "@/components/StatCard";
 import RecentExpensesCard from "@/components/RecentExpensesCard";
@@ -69,15 +68,42 @@ function generateStatusText(expense: GetExpenseResponse, currentUser: string): s
 }
 
 export default function DashboardPage() {
-    //const {user} = useAuth();
-    let householdID: string = "1"; //these are hardocded values based on values that are currently in table. can delete once we have authentication.
-    let currUser = "2";
-    //let householdID: string = user?.user_metadata?.household_id ?? "";
-    //let currUser = user?.id ?? "";
+    const { session, user } = useAuth();
+
+    const [householdID, setHouseholdID] = useState("");
+    const [householdName, setHouseholdName] = useState("");
+    const [currUser, setCurrUser] = useState("");
     let [expenses, setExpenses] = useState<GetExpenseResponse[]>([]);
-    let[loading, setLoading] = useState(true);
+    let [loading, setLoading] = useState(true);
     let [error, setError] = useState("");
     let [showCreateModal, setShowCreateModal] = useState(false);
+
+    useEffect(() => {
+        if (!session?.access_token) return;
+
+        async function loadHousehold() {
+            const res = await fetch("/api/households", {
+                headers: { "Authorization": `Bearer ${session.access_token}` },
+            });
+            if (!res.ok) return;
+            const data = await res.json();
+            if (data.length === 0) return;
+
+            const household = data[0];
+            setHouseholdID(String(household.id));
+            setHouseholdName(household.name);
+
+            const membersRes = await fetch(`/api/households/${household.id}/members`, {
+                headers: { "Authorization": `Bearer ${session.access_token}` },
+            });
+            if (!membersRes.ok) return;
+            const members = await membersRes.json();
+            const me = members.find((m: any) => m.email === user?.email);
+            if (me) setCurrUser(String(me.id));
+        }
+
+        loadHousehold();
+    }, [session]);
 
     async function loadExpenses(){
         if (!householdID) return;
@@ -117,7 +143,7 @@ export default function DashboardPage() {
             {loading && <p style = {{color: "#888", marginBottom: 16}}>Loading...</p>}
 
             <div className = "page-header">
-                <h1 className = "page-title">Gator Grove Apt 3B</h1>
+                <h1 className = "page-title">{householdName}</h1>
                 <div className = "page-features">
                     <button className = "add-expense-btn" onClick={() => setShowCreateModal(true)}>Add Expense</button>
                     <button className = "settle-up-btn">Settle Up</button>
