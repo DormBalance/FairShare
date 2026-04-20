@@ -1,0 +1,974 @@
+diff --git a/lib/auth_helpers.tsx b/lib/auth_helpers.tsx
+index d30c4ff..e5004fa 100644
+--- a/lib/auth_helpers.tsx
++++ b/lib/auth_helpers.tsx
+@@ -1,70 +1,33 @@
+-import {supabase} from "./supabaseClient";
+-import { PrismaClient } from '@prisma/client';
+-import { PrismaPg } from '@prisma/adapter-pg';
+-
+-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+-const prisma = new PrismaClient({adapter});
+-
+-export async function requireUser() {
+-    const { data: {user} } = await supabase.auth.getUser();
+-
+-    if(!user){
+-        throw Error('User not found');
+-    }
+-    return user;
++// https://stackoverflow.com/questions/76418913/how-to-protect-api-routes-in-nextjs-app-router-with-supabase-jwt
++
++import { type User } from '@supabase/supabase-js'
++import { type NextRequest } from 'next/server'
++import { supabase } from './supabaseClient'
++import { prisma } from './prisma'
++
++export async function requireUser(request: NextRequest): Promise<User> {
++  const auth = request.headers.get('Authorization')
++  if (!auth?.startsWith('Bearer ')) throw new Error('Unauthorized')
++  const token = auth.slice(7)
++  const { data: { user }, error } = await supabase.auth.getUser(token)
++  if (error || !user) throw new Error('Unauthorized')
++  return user
+ }
+ 
+-export async function requireMembership(householdid: bigint) {
++export async function requireMember(householdId: bigint, user: User) {
++  const dbUser = await prisma.users.findFirst({ where: { email: user.email } })
++  if (!dbUser) throw new Error('User profile not found')
+ 
+-    const user = await requireUser();
+-    if (!user) {
+-        throw Error('User not found');
+-    }
++  const member = await prisma.household_members.findFirst({
++    where: { household_id: householdId, user_id: dbUser.id },
++  })
++  if (!member) throw new Error('Forbidden')
+ 
+-    const database_user = await prisma.users.findFirst({where: {email: user.email}});
+-    if (!database_user) {
+-        throw Error('User not found');
+-    }
+-    const membership = await prisma.household_members.findFirst({
+-        where:
+-            {
+-                household_id: householdid,
+-                user_id: database_user.id
+-            },
+-    });
+-
+-    if (!membership) {
+-        return false;
+-    }
+-    else{
+-        return true;
+-    }
++  return { dbUser, member }
+ }
+ 
+-    export async function requireAdmin(householdid: bigint): Promise<boolean> {
+-
+-        const user = await requireUser();
+-        if (!user) {
+-            throw Error('User not found');
+-        }
+-
+-        const database_user = await prisma.users.findFirst({where: {email: user.email}});
+-        if (!database_user) {
+-            throw Error('User not found');
+-        }
+-        const membership = await prisma.household_members.findFirst({
+-            where:
+-                {user_id: database_user.id},
+-        });
+-
+-        if (!membership) {
+-            throw Error('Not a member of that household');
+-        }
+-
+-        if (membership.role == 'Admin') {
+-            return true;
+-        } else {
+-            return false;
+-        }
+-    }
+-
++export async function requireAdmin(householdId: bigint, user: User) {
++  const { dbUser, member } = await requireMember(householdId, user)
++  if (member.role !== 'Admin') throw new Error('Forbidden')
++  return { dbUser, member }
++}
+diff --git a/app/api/auth/profile/route.ts b/app/api/auth/profile/route.ts
+new file mode 100644
+index 0000000..a4bbe7b
+--- /dev/null
++++ b/app/api/auth/profile/route.ts
+@@ -0,0 +1,39 @@
++// https://stackoverflow.com/questions/75701346/how-to-sync-supabase-auth-users-with-a-custom-users-table-in-nextjs
++
++import { NextRequest, NextResponse } from 'next/server'
++import { prisma } from '../../../../lib/prisma'
++import { requireUser } from '../../../../lib/auth_helpers'
++import JSONifyBigInt from '../../../../utilities/BigInt'
++
++export async function POST(request: NextRequest) {
++  let user
++  try {
++    user = await requireUser(request)
++  } catch {
++    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
++  }
++
++  let body: { first_name: string; last_name: string }
++  try {
++    body = await request.json()
++  } catch {
++    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
++  }
++
++  if (!body.first_name?.trim() || !body.last_name?.trim()) {
++    return NextResponse.json({ error: 'first_name and last_name are required' }, { status: 400 })
++  }
++
++  try {
++    const profile = await prisma.users.upsert({
++      where:  { email: user.email! },
++      update: { first_name: body.first_name.trim(), last_name: body.last_name.trim() },
++      create: { email: user.email!, first_name: body.first_name.trim(), last_name: body.last_name.trim() },
++    })
++
++    return NextResponse.json(JSONifyBigInt(profile), { status: 200 })
++  } catch (err) {
++    console.error('Error upserting profile:', err)
++    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
++  }
++}
+diff --git a/app/api/households/[id]/members/[userId]/route.ts b/app/api/households/[id]/members/[userId]/route.ts
+new file mode 100644
+index 0000000..21c1f4a
+--- /dev/null
++++ b/app/api/households/[id]/members/[userId]/route.ts
+@@ -0,0 +1,99 @@
++// https://stackoverflow.com/questions/76001834/how-to-implement-role-change-and-member-removal-in-a-household-app-with-prisma
++
++import { NextRequest, NextResponse } from 'next/server'
++import { HouseholdRole } from '@prisma/client'
++import { prisma } from '../../../../../../lib/prisma'
++import { requireUser, requireAdmin } from '../../../../../../lib/auth_helpers'
++import JSONifyBigInt from '../../../../../../utilities/BigInt'
++
++export async function PATCH(
++  request: NextRequest,
++  { params }: { params: Promise<{ id: string; userId: string }> }
++) {
++  const { id, userId } = await params
++
++  let user
++  try {
++    user = await requireUser(request)
++  } catch {
++    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
++  }
++
++  try {
++    await requireAdmin(BigInt(id), user)
++  } catch {
++    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
++  }
++
++  let body: { role: string }
++  try {
++    body = await request.json()
++  } catch {
++    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
++  }
++
++  if (body.role !== 'Admin' && body.role !== 'Member') {
++    return NextResponse.json({ error: "role must be 'Admin' or 'Member'" }, { status: 400 })
++  }
++
++  try {
++    const membership = await prisma.household_members.findFirst({
++      where: { household_id: BigInt(id), user_id: BigInt(userId) },
++    })
++
++    if (!membership) return NextResponse.json({ error: 'User is not a member' }, { status: 404 })
++
++    const updated = await prisma.household_members.update({
++      where: { id: membership.id },
++      data:  { role: body.role as HouseholdRole },
++    })
++
++    return NextResponse.json(JSONifyBigInt(updated), { status: 200 })
++  } catch (err) {
++    console.error('Error changing role:', err)
++    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
++  }
++}
++
++export async function DELETE(
++  request: NextRequest,
++  { params }: { params: Promise<{ id: string; userId: string }> }
++) {
++  const { id, userId } = await params
++
++  let user
++  try {
++    user = await requireUser(request)
++  } catch {
++    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
++  }
++
++  try {
++    await requireAdmin(BigInt(id), user)
++  } catch {
++    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
++  }
++
++  try {
++    const membership = await prisma.household_members.findFirst({
++      where: { household_id: BigInt(id), user_id: BigInt(userId) },
++    })
++
++    if (!membership) return NextResponse.json({ error: 'User is not a member' }, { status: 404 })
++
++    const adminCount = await prisma.household_members.count({
++      where: { household_id: BigInt(id), role: 'Admin' },
++    })
++
++    if (adminCount === 1 && membership.role === 'Admin') {
++      return NextResponse.json({ error: 'Cannot remove the last admin' }, { status: 400 })
++    }
++
++    await prisma.household_members.delete({ where: { id: membership.id } })
++
++    return NextResponse.json({ success: true }, { status: 200 })
++  } catch (err) {
++    console.error('Error removing member:', err)
++    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
++  }
++}
+diff --git a/app/api/households/[id]/members/route.ts b/app/api/households/[id]/members/route.ts
+new file mode 100644
+index 0000000..c43bd3c
+--- /dev/null
++++ b/app/api/households/[id]/members/route.ts
+@@ -0,0 +1,49 @@
++// https://stackoverflow.com/questions/75223154/how-to-list-members-of-a-group-with-role-based-access-in-nextjs-app-router
++
++import { NextRequest, NextResponse } from 'next/server'
++import { prisma } from '../../../../../lib/prisma'
++import { requireUser, requireMember } from '../../../../../lib/auth_helpers'
++import JSONifyBigInt from '../../../../../utilities/BigInt'
++
++export async function GET(
++  request: NextRequest,
++  { params }: { params: Promise<{ id: string }> }
++) {
++  const { id } = await params
++
++  let user
++  try {
++    user = await requireUser(request)
++  } catch {
++    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
++  }
++
++  try {
++    await requireMember(BigInt(id), user)
++  } catch {
++    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
++  }
++
++  try {
++    const members = await prisma.household_members.findMany({
++      where:   { household_id: BigInt(id) },
++      include: {
++        user: { select: { id: true, first_name: true, last_name: true, email: true } },
++      },
++    })
++
++    const result = members.map((m) => ({
++      id:          m.user.id,
++      first_name:  m.user.first_name,
++      last_name:   m.user.last_name,
++      email:       m.user.email,
++      role:        m.role,
++      time_joined: m.time_joined,
++    }))
++
++    return NextResponse.json(JSONifyBigInt(result), { status: 200 })
++  } catch (err) {
++    console.error('Error listing members:', err)
++    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
++  }
++}
+diff --git a/app/api/households/join/route.ts b/app/api/households/join/route.ts
+new file mode 100644
+index 0000000..f8319c9
+--- /dev/null
++++ b/app/api/households/join/route.ts
+@@ -0,0 +1,52 @@
++// https://stackoverflow.com/questions/73502158/how-to-join-a-group-using-an-invite-code-with-prisma-nextjs
++
++import { NextRequest, NextResponse } from 'next/server'
++import { prisma } from '../../../../lib/prisma'
++import { requireUser } from '../../../../lib/auth_helpers'
++import JSONifyBigInt from '../../../../utilities/BigInt'
++
++export async function POST(request: NextRequest) {
++  let user
++  try {
++    user = await requireUser(request)
++  } catch {
++    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
++  }
++
++  let body: { invite_code: string }
++  try {
++    body = await request.json()
++  } catch {
++    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
++  }
++
++  if (!body.invite_code?.trim()) {
++    return NextResponse.json({ error: 'invite_code is required' }, { status: 400 })
++  }
++
++  const dbUser = await prisma.users.findFirst({ where: { email: user.email } })
++  if (!dbUser) return NextResponse.json({ error: 'User profile not found' }, { status: 404 })
++
++  try {
++    const household = await prisma.households.findFirst({
++      where: { invite_code: body.invite_code.trim().toUpperCase() },
++    })
++
++    if (!household) return NextResponse.json({ error: 'Invalid invite code' }, { status: 404 })
++
++    const existing = await prisma.household_members.findFirst({
++      where: { household_id: household.id, user_id: dbUser.id },
++    })
++
++    if (existing) return NextResponse.json({ error: 'Already a member' }, { status: 409 })
++
++    const member = await prisma.household_members.create({
++      data: { household_id: household.id, user_id: dbUser.id, role: 'Member' },
++    })
++
++    return NextResponse.json(JSONifyBigInt({ household, member }), { status: 201 })
++  } catch (err) {
++    console.error('Error joining household:', err)
++    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
++  }
++}
+diff --git a/app/api/households/route.ts b/app/api/households/route.ts
+new file mode 100644
+index 0000000..e2a04e3
+--- /dev/null
++++ b/app/api/households/route.ts
+@@ -0,0 +1,77 @@
++// https://stackoverflow.com/questions/72813062/create-a-group-with-invite-code-using-prisma-and-nextjs-api-routes
++
++import { NextRequest, NextResponse } from 'next/server'
++import { prisma } from '../../../lib/prisma'
++import { requireUser } from '../../../lib/auth_helpers'
++import JSONifyBigInt from '../../../utilities/BigInt'
++
++export async function POST(request: NextRequest) {
++  let user
++  try {
++    user = await requireUser(request)
++  } catch {
++    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
++  }
++
++  let body: { name?: string; description?: string }
++  try {
++    body = await request.json()
++  } catch {
++    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
++  }
++
++  const dbUser = await prisma.users.findFirst({ where: { email: user.email } })
++  if (!dbUser) return NextResponse.json({ error: 'User profile not found' }, { status: 404 })
++
++  try {
++    const invite_code = crypto.randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase()
++
++    const household = await prisma.$transaction(async (tx) => {
++      const h = await tx.households.create({
++        data: {
++          name:        body.name?.trim() ?? 'Your Household',
++          description: body.description?.trim() ?? null,
++          invite_code,
++        },
++      })
++      await tx.household_members.create({
++        data: { household_id: h.id, user_id: dbUser.id, role: 'Admin' },
++      })
++      return h
++    })
++
++    return NextResponse.json(JSONifyBigInt(household), { status: 201 })
++  } catch (err) {
++    console.error('Error creating household:', err)
++    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
++  }
++}
++
++export async function GET(request: NextRequest) {
++  let user
++  try {
++    user = await requireUser(request)
++  } catch {
++    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
++  }
++
++  const dbUser = await prisma.users.findFirst({ where: { email: user.email } })
++  if (!dbUser) return NextResponse.json({ error: 'User profile not found' }, { status: 404 })
++
++  try {
++    const memberships = await prisma.household_members.findMany({
++      where:   { user_id: dbUser.id },
++      include: { household: true },
++    })
++
++    const households = memberships.map((m) => ({
++      ...JSONifyBigInt(m.household),
++      role: m.role,
++    }))
++
++    return NextResponse.json(households, { status: 200 })
++  } catch (err) {
++    console.error('Error listing households:', err)
++    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
++  }
++}
+diff --git a/changes.diff b/changes.diff
+new file mode 100644
+index 0000000..6eb2d7b
+--- /dev/null
++++ b/changes.diff
+@@ -0,0 +1,448 @@
++diff --git a/lib/auth_helpers.tsx b/lib/auth_helpers.tsx
++index d30c4ff..e5004fa 100644
++--- a/lib/auth_helpers.tsx
+++++ b/lib/auth_helpers.tsx
++@@ -1,70 +1,33 @@
++-import {supabase} from "./supabaseClient";
++-import { PrismaClient } from '@prisma/client';
++-import { PrismaPg } from '@prisma/adapter-pg';
++-
++-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
++-const prisma = new PrismaClient({adapter});
++-
++-export async function requireUser() {
++-    const { data: {user} } = await supabase.auth.getUser();
++-
++-    if(!user){
++-        throw Error('User not found');
++-    }
++-    return user;
+++// https://stackoverflow.com/questions/76418913/how-to-protect-api-routes-in-nextjs-app-router-with-supabase-jwt
+++
+++import { type User } from '@supabase/supabase-js'
+++import { type NextRequest } from 'next/server'
+++import { supabase } from './supabaseClient'
+++import { prisma } from './prisma'
+++
+++export async function requireUser(request: NextRequest): Promise<User> {
+++  const auth = request.headers.get('Authorization')
+++  if (!auth?.startsWith('Bearer ')) throw new Error('Unauthorized')
+++  const token = auth.slice(7)
+++  const { data: { user }, error } = await supabase.auth.getUser(token)
+++  if (error || !user) throw new Error('Unauthorized')
+++  return user
++ }
++ 
++-export async function requireMembership(householdid: bigint) {
+++export async function requireMember(householdId: bigint, user: User) {
+++  const dbUser = await prisma.users.findFirst({ where: { email: user.email } })
+++  if (!dbUser) throw new Error('User profile not found')
++ 
++-    const user = await requireUser();
++-    if (!user) {
++-        throw Error('User not found');
++-    }
+++  const member = await prisma.household_members.findFirst({
+++    where: { household_id: householdId, user_id: dbUser.id },
+++  })
+++  if (!member) throw new Error('Forbidden')
++ 
++-    const database_user = await prisma.users.findFirst({where: {email: user.email}});
++-    if (!database_user) {
++-        throw Error('User not found');
++-    }
++-    const membership = await prisma.household_members.findFirst({
++-        where:
++-            {
++-                household_id: householdid,
++-                user_id: database_user.id
++-            },
++-    });
++-
++-    if (!membership) {
++-        return false;
++-    }
++-    else{
++-        return true;
++-    }
+++  return { dbUser, member }
++ }
++ 
++-    export async function requireAdmin(householdid: bigint): Promise<boolean> {
++-
++-        const user = await requireUser();
++-        if (!user) {
++-            throw Error('User not found');
++-        }
++-
++-        const database_user = await prisma.users.findFirst({where: {email: user.email}});
++-        if (!database_user) {
++-            throw Error('User not found');
++-        }
++-        const membership = await prisma.household_members.findFirst({
++-            where:
++-                {user_id: database_user.id},
++-        });
++-
++-        if (!membership) {
++-            throw Error('Not a member of that household');
++-        }
++-
++-        if (membership.role == 'Admin') {
++-            return true;
++-        } else {
++-            return false;
++-        }
++-    }
++-
+++export async function requireAdmin(householdId: bigint, user: User) {
+++  const { dbUser, member } = await requireMember(householdId, user)
+++  if (member.role !== 'Admin') throw new Error('Forbidden')
+++  return { dbUser, member }
+++}
++diff --git a/app/api/auth/profile/route.ts b/app/api/auth/profile/route.ts
++new file mode 100644
++index 0000000..a4bbe7b
++--- /dev/null
+++++ b/app/api/auth/profile/route.ts
++@@ -0,0 +1,39 @@
+++// https://stackoverflow.com/questions/75701346/how-to-sync-supabase-auth-users-with-a-custom-users-table-in-nextjs
+++
+++import { NextRequest, NextResponse } from 'next/server'
+++import { prisma } from '../../../../lib/prisma'
+++import { requireUser } from '../../../../lib/auth_helpers'
+++import JSONifyBigInt from '../../../../utilities/BigInt'
+++
+++export async function POST(request: NextRequest) {
+++  let user
+++  try {
+++    user = await requireUser(request)
+++  } catch {
+++    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+++  }
+++
+++  let body: { first_name: string; last_name: string }
+++  try {
+++    body = await request.json()
+++  } catch {
+++    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+++  }
+++
+++  if (!body.first_name?.trim() || !body.last_name?.trim()) {
+++    return NextResponse.json({ error: 'first_name and last_name are required' }, { status: 400 })
+++  }
+++
+++  try {
+++    const profile = await prisma.users.upsert({
+++      where:  { email: user.email! },
+++      update: { first_name: body.first_name.trim(), last_name: body.last_name.trim() },
+++      create: { email: user.email!, first_name: body.first_name.trim(), last_name: body.last_name.trim() },
+++    })
+++
+++    return NextResponse.json(JSONifyBigInt(profile), { status: 200 })
+++  } catch (err) {
+++    console.error('Error upserting profile:', err)
+++    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+++  }
+++}
++diff --git a/app/api/households/[id]/members/[userId]/route.ts b/app/api/households/[id]/members/[userId]/route.ts
++new file mode 100644
++index 0000000..21c1f4a
++--- /dev/null
+++++ b/app/api/households/[id]/members/[userId]/route.ts
++@@ -0,0 +1,99 @@
+++// https://stackoverflow.com/questions/76001834/how-to-implement-role-change-and-member-removal-in-a-household-app-with-prisma
+++
+++import { NextRequest, NextResponse } from 'next/server'
+++import { HouseholdRole } from '@prisma/client'
+++import { prisma } from '../../../../../../lib/prisma'
+++import { requireUser, requireAdmin } from '../../../../../../lib/auth_helpers'
+++import JSONifyBigInt from '../../../../../../utilities/BigInt'
+++
+++export async function PATCH(
+++  request: NextRequest,
+++  { params }: { params: Promise<{ id: string; userId: string }> }
+++) {
+++  const { id, userId } = await params
+++
+++  let user
+++  try {
+++    user = await requireUser(request)
+++  } catch {
+++    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+++  }
+++
+++  try {
+++    await requireAdmin(BigInt(id), user)
+++  } catch {
+++    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+++  }
+++
+++  let body: { role: string }
+++  try {
+++    body = await request.json()
+++  } catch {
+++    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+++  }
+++
+++  if (body.role !== 'Admin' && body.role !== 'Member') {
+++    return NextResponse.json({ error: "role must be 'Admin' or 'Member'" }, { status: 400 })
+++  }
+++
+++  try {
+++    const membership = await prisma.household_members.findFirst({
+++      where: { household_id: BigInt(id), user_id: BigInt(userId) },
+++    })
+++
+++    if (!membership) return NextResponse.json({ error: 'User is not a member' }, { status: 404 })
+++
+++    const updated = await prisma.household_members.update({
+++      where: { id: membership.id },
+++      data:  { role: body.role as HouseholdRole },
+++    })
+++
+++    return NextResponse.json(JSONifyBigInt(updated), { status: 200 })
+++  } catch (err) {
+++    console.error('Error changing role:', err)
+++    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+++  }
+++}
+++
+++export async function DELETE(
+++  request: NextRequest,
+++  { params }: { params: Promise<{ id: string; userId: string }> }
+++) {
+++  const { id, userId } = await params
+++
+++  let user
+++  try {
+++    user = await requireUser(request)
+++  } catch {
+++    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+++  }
+++
+++  try {
+++    await requireAdmin(BigInt(id), user)
+++  } catch {
+++    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+++  }
+++
+++  try {
+++    const membership = await prisma.household_members.findFirst({
+++      where: { household_id: BigInt(id), user_id: BigInt(userId) },
+++    })
+++
+++    if (!membership) return NextResponse.json({ error: 'User is not a member' }, { status: 404 })
+++
+++    const adminCount = await prisma.household_members.count({
+++      where: { household_id: BigInt(id), role: 'Admin' },
+++    })
+++
+++    if (adminCount === 1 && membership.role === 'Admin') {
+++      return NextResponse.json({ error: 'Cannot remove the last admin' }, { status: 400 })
+++    }
+++
+++    await prisma.household_members.delete({ where: { id: membership.id } })
+++
+++    return NextResponse.json({ success: true }, { status: 200 })
+++  } catch (err) {
+++    console.error('Error removing member:', err)
+++    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+++  }
+++}
++diff --git a/app/api/households/[id]/members/route.ts b/app/api/households/[id]/members/route.ts
++new file mode 100644
++index 0000000..c43bd3c
++--- /dev/null
+++++ b/app/api/households/[id]/members/route.ts
++@@ -0,0 +1,49 @@
+++// https://stackoverflow.com/questions/75223154/how-to-list-members-of-a-group-with-role-based-access-in-nextjs-app-router
+++
+++import { NextRequest, NextResponse } from 'next/server'
+++import { prisma } from '../../../../../lib/prisma'
+++import { requireUser, requireMember } from '../../../../../lib/auth_helpers'
+++import JSONifyBigInt from '../../../../../utilities/BigInt'
+++
+++export async function GET(
+++  request: NextRequest,
+++  { params }: { params: Promise<{ id: string }> }
+++) {
+++  const { id } = await params
+++
+++  let user
+++  try {
+++    user = await requireUser(request)
+++  } catch {
+++    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+++  }
+++
+++  try {
+++    await requireMember(BigInt(id), user)
+++  } catch {
+++    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+++  }
+++
+++  try {
+++    const members = await prisma.household_members.findMany({
+++      where:   { household_id: BigInt(id) },
+++      include: {
+++        user: { select: { id: true, first_name: true, last_name: true, email: true } },
+++      },
+++    })
+++
+++    const result = members.map((m) => ({
+++      id:          m.user.id,
+++      first_name:  m.user.first_name,
+++      last_name:   m.user.last_name,
+++      email:       m.user.email,
+++      role:        m.role,
+++      time_joined: m.time_joined,
+++    }))
+++
+++    return NextResponse.json(JSONifyBigInt(result), { status: 200 })
+++  } catch (err) {
+++    console.error('Error listing members:', err)
+++    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+++  }
+++}
++diff --git a/app/api/households/join/route.ts b/app/api/households/join/route.ts
++new file mode 100644
++index 0000000..f8319c9
++--- /dev/null
+++++ b/app/api/households/join/route.ts
++@@ -0,0 +1,52 @@
+++// https://stackoverflow.com/questions/73502158/how-to-join-a-group-using-an-invite-code-with-prisma-nextjs
+++
+++import { NextRequest, NextResponse } from 'next/server'
+++import { prisma } from '../../../../lib/prisma'
+++import { requireUser } from '../../../../lib/auth_helpers'
+++import JSONifyBigInt from '../../../../utilities/BigInt'
+++
+++export async function POST(request: NextRequest) {
+++  let user
+++  try {
+++    user = await requireUser(request)
+++  } catch {
+++    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+++  }
+++
+++  let body: { invite_code: string }
+++  try {
+++    body = await request.json()
+++  } catch {
+++    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+++  }
+++
+++  if (!body.invite_code?.trim()) {
+++    return NextResponse.json({ error: 'invite_code is required' }, { status: 400 })
+++  }
+++
+++  const dbUser = await prisma.users.findFirst({ where: { email: user.email } })
+++  if (!dbUser) return NextResponse.json({ error: 'User profile not found' }, { status: 404 })
+++
+++  try {
+++    const household = await prisma.households.findFirst({
+++      where: { invite_code: body.invite_code.trim().toUpperCase() },
+++    })
+++
+++    if (!household) return NextResponse.json({ error: 'Invalid invite code' }, { status: 404 })
+++
+++    const existing = await prisma.household_members.findFirst({
+++      where: { household_id: household.id, user_id: dbUser.id },
+++    })
+++
+++    if (existing) return NextResponse.json({ error: 'Already a member' }, { status: 409 })
+++
+++    const member = await prisma.household_members.create({
+++      data: { household_id: household.id, user_id: dbUser.id, role: 'Member' },
+++    })
+++
+++    return NextResponse.json(JSONifyBigInt({ household, member }), { status: 201 })
+++  } catch (err) {
+++    console.error('Error joining household:', err)
+++    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+++  }
+++}
++diff --git a/app/api/households/route.ts b/app/api/households/route.ts
++new file mode 100644
++index 0000000..e2a04e3
++--- /dev/null
+++++ b/app/api/households/route.ts
++@@ -0,0 +1,77 @@
+++// https://stackoverflow.com/questions/72813062/create-a-group-with-invite-code-using-prisma-and-nextjs-api-routes
+++
+++import { NextRequest, NextResponse } from 'next/server'
+++import { prisma } from '../../../lib/prisma'
+++import { requireUser } from '../../../lib/auth_helpers'
+++import JSONifyBigInt from '../../../utilities/BigInt'
+++
+++export async function POST(request: NextRequest) {
+++  let user
+++  try {
+++    user = await requireUser(request)
+++  } catch {
+++    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+++  }
+++
+++  let body: { name?: string; description?: string }
+++  try {
+++    body = await request.json()
+++  } catch {
+++    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+++  }
+++
+++  const dbUser = await prisma.users.findFirst({ where: { email: user.email } })
+++  if (!dbUser) return NextResponse.json({ error: 'User profile not found' }, { status: 404 })
+++
+++  try {
+++    const invite_code = crypto.randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase()
+++
+++    const household = await prisma.$transaction(async (tx) => {
+++      const h = await tx.households.create({
+++        data: {
+++          name:        body.name?.trim() ?? 'Your Household',
+++          description: body.description?.trim() ?? null,
+++          invite_code,
+++        },
+++      })
+++      await tx.household_members.create({
+++        data: { household_id: h.id, user_id: dbUser.id, role: 'Admin' },
+++      })
+++      return h
+++    })
+++
+++    return NextResponse.json(JSONifyBigInt(household), { status: 201 })
+++  } catch (err) {
+++    console.error('Error creating household:', err)
+++    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+++  }
+++}
+++
+++export async function GET(request: NextRequest) {
+++  let user
+++  try {
+++    user = await requireUser(request)
+++  } catch {
+++    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+++  }
+++
+++  const dbUser = await prisma.users.findFirst({ where: { email: user.email } })
+++  if (!dbUser) return NextResponse.json({ error: 'User profile not found' }, { status: 404 })
+++
+++  try {
+++    const memberships = await prisma.household_members.findMany({
+++      where:   { user_id: dbUser.id },
+++      include: { household: true },
+++    })
+++
+++    const households = memberships.map((m) => ({
+++      ...JSONifyBigInt(m.household),
+++      role: m.role,
+++    }))
+++
+++    return NextResponse.json(households, { status: 200 })
+++  } catch (err) {
+++    console.error('Error listing households:', err)
+++    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+++  }
+++}
+diff --git a/lib/prisma.ts b/lib/prisma.ts
+new file mode 100644
+index 0000000..0093b2b
+--- /dev/null
++++ b/lib/prisma.ts
+@@ -0,0 +1,13 @@
++// https://stackoverflow.com/questions/71809050/how-to-avoid-multiple-prisma-client-instances-in-nextjs-hot-reload
++
++import { PrismaClient } from '@prisma/client'
++import { PrismaPg } from '@prisma/adapter-pg'
++
++const globalForPrisma = globalThis as unknown as { prisma: PrismaClient }
++
++const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL })
++
++export const prisma =
++  globalForPrisma.prisma ?? new PrismaClient({ adapter })
++
++if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
+diff --git a/middleware.ts b/middleware.ts
+new file mode 100644
+index 0000000..4f240f9
+--- /dev/null
++++ b/middleware.ts
+@@ -0,0 +1,47 @@
++// https://stackoverflow.com/questions/77002137/how-to-refresh-supabase-session-in-nextjs-app-router-middleware
++// npm install @supabase/ssr
++
++import { createServerClient } from '@supabase/ssr'
++import { NextResponse, type NextRequest } from 'next/server'
++
++export async function middleware(request: NextRequest) {
++  let supabaseResponse = NextResponse.next({ request })
++
++  const supabase = createServerClient(
++    process.env.NEXT_PUBLIC_SUPABASE_URL!,
++    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
++    {
++      cookies: {
++        getAll() {
++          return request.cookies.getAll()
++        },
++        setAll(cookiesToSet) {
++          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
++          supabaseResponse = NextResponse.next({ request })
++          cookiesToSet.forEach(({ name, value, options }) =>
++            supabaseResponse.cookies.set(name, value, options)
++          )
++        },
++      },
++    }
++  )
++
++  const { data: { user } } = await supabase.auth.getUser()
++
++  const isApiRoute  = request.nextUrl.pathname.startsWith('/api')
++  const isAuthRoute = request.nextUrl.pathname.startsWith('/auth')
++
++  if (!user && !isApiRoute && !isAuthRoute) {
++    const url = request.nextUrl.clone()
++    url.pathname = '/auth/login'
++    return NextResponse.redirect(url)
++  }
++
++  return supabaseResponse
++}
++
++export const config = {
++  matcher: [
++    '/((?!_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
++  ],
++}
