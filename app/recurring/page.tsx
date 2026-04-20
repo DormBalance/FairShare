@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useAuth } from "@/app/auth/auth";
 import DashboardLayout from "@/components/DashboardLayout";
 import { getRecurringExpenses } from "@/lib/api";
 import { GetRecurringExpenseResponse } from "@/types";
@@ -23,13 +24,36 @@ function formatCurrency(amount: number): string {
 }
 
 export default function RecurringPage() {
-    let householdID: string = "1";
-    let currUser = "2";
+    const { session, user } = useAuth();
+    let [householdID, setHouseholdID] = useState("");
+    let [currUser, setCurrUser] = useState("");
     let [recurringExpenses, setRecurringExpenses] = useState<GetRecurringExpenseResponse[]>([]);
     let [loading, setLoading] = useState<boolean>(true);
     let [error, setError] = useState<string>("");
     let [showCreateModal, setShowCreateModal] = useState<boolean>(false);
 
+    // Copied from dashboard/page.tsx pattern — fetches household and DB user ID via API
+    useEffect(() => {
+        if (!session?.access_token) return;
+        async function loadHousehold() {
+            const res = await fetch("/api/households", {
+                headers: { "Authorization": `Bearer ${session.access_token}` },
+            });
+            if (!res.ok) return;
+            const data = await res.json();
+            if (data.length === 0) return;
+            const household = data[0];
+            setHouseholdID(String(household.id));
+            const membersRes = await fetch(`/api/households/${household.id}/members`, {
+                headers: { "Authorization": `Bearer ${session.access_token}` },
+            });
+            if (!membersRes.ok) return;
+            const members = await membersRes.json();
+            const me = members.find((m: any) => m.email === user?.email);
+            if (me) setCurrUser(String(me.id));
+        }
+        loadHousehold();
+    }, [session]);
 
     async function loadRecurringExpenses() {
         if (!householdID) return;
