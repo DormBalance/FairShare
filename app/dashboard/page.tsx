@@ -53,8 +53,7 @@ function generateStatusText(expense: GetExpenseResponse, currentUser: string): s
         if(amountOwed === 0){
             return "Settled Up";
         }
-        let firstName = expense.expense_payer?.first_name || "Someone";
-        return `${firstName} owes you ${formatCurrency(amountOwed)}`;
+        return `You are owed ${formatCurrency(amountOwed)}`;
         }
         let userSplit = expense.splits.find((s) => s.user_id === currentUser);
         if(!userSplit || userSplit.opted_out){
