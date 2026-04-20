@@ -35,8 +35,7 @@ function generateStatusText(expense: GetExpenseResponse, currentUser: string): s
         if(amountOwed === 0){
             return "Settled Up";
         }
-        let firstName = expense.expense_payer?.first_name || "Someone";
-        return `${firstName} owes you ${formatCurrency(amountOwed)}`;
+        return `You are owed ${formatCurrency(amountOwed)}`;
         }
         let userSplit = expense.splits.find((s) => s.user_id === currentUser);
         if(!userSplit || userSplit.opted_out){
@@ -127,6 +126,7 @@ export default function ExpensesPage() {
         <DashboardLayout>
             <div className = "expense-page-header">
                 <h1 className = "expense-page-title"> Expenses </h1>
+                <button className = "add-expense-btn">Add Expense </button>
             </div>
 
             <div className = "expense-page-controls">
