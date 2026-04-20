@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient, RecurringExpenseFrequency } from '@prisma/client';
+import { PrismaClient, RecurringExpenseFrequency, SplitType } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import JSONifyBigInt from '../../../utilities/BigInt';
+import { CalculateEqualSplit, CalculatePercentSplit } from '../expenses/split';
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
@@ -16,6 +17,12 @@ interface CreateRecurringBillBody {
     frequency: string;
     next_expense_date: string;
     expense_category_id?: string;
+    split_type: string;
+    included_user_ids?: string[];
+    participants?: {
+        user_id: string;
+        percent: number;
+    }[];
 }
 
 // Make sure the user submitted a valid date.
@@ -83,7 +90,10 @@ export async function POST(request: NextRequest) {
         amount,
         frequency,
         next_expense_date,
-        expense_category_id
+        expense_category_id,
+        split_type,
+        included_user_ids,
+        participants
     } = body;
 
     if (!household_id) {
@@ -111,13 +121,20 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'next_expense_date is required' }, { status: 400 });
     }
 
+    let resolvedSplitType: SplitType;
+    if (split_type === 'Equal')
+        resolvedSplitType = SplitType.Equal;
+    else if (split_type === 'Custom')
+        resolvedSplitType = SplitType.Custom;
+    else
+        return NextResponse.json({ error: "split_type must be either 'Equal' or 'Custom'" }, { status: 400 });
+
     let householdID: bigint;
     let creatorUserID: bigint;
     let payerUserID: bigint;
     let billAmount: number;
     let billFrequency: RecurringExpenseFrequency;
     let nextExpenseDate: Date;
-    let expenseCategoryID: bigint | null = null;
 
     try {
         householdID = BigInt(household_id);
@@ -146,49 +163,112 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-        const validMemberIDs = await getHouseholdMemberIds(householdID);
+        let validIDs = await getHouseholdMemberIds(householdID);
 
-        if (!validMemberIDs.has(creatorUserID.toString())) {
+        if (!validIDs.has(creatorUserID.toString())) {
             return NextResponse.json({ error: 'creator_user_id must be a member of the household' }, { status: 400 });
         }
 
-        if (!validMemberIDs.has(payerUserID.toString())) {
+        if (!validIDs.has(payerUserID.toString())) {
             return NextResponse.json({ error: 'payer_user_id must be a member of the household' }, { status: 400 });
         }
 
         if (expense_category_id) {
-            prisma.expense_categories.findFirst({
+            const category = await prisma.expense_categories.findFirst({
                 where: {
                     household_id: householdID,
                     id: BigInt(expense_category_id)
                 }
-            })
+            });
+            if (!category)
+                return NextResponse.json({ error: 'expense category not in household' }, { status: 400 });
+        }
+        let Rows;
+
+        if (resolvedSplitType === SplitType.Equal) {
+            let participantsArray; //logic component
+            if(!included_user_ids)
+                participantsArray = [];
+            else
+                participantsArray = included_user_ids;
+
+            const participantIDs = participantsArray.map((id) => {
+                return BigInt(id);
+            });
+
+            if (participantIDs.length === 0) //validation section
+                return NextResponse.json({ error: 'no participants for equal split' }, { status: 400 });
+
+            for (let i = 0; i < participantIDs.length; i++) {
+                if (!validIDs.has(participantIDs[i].toString()))
+                    return NextResponse.json({ error: 'participants not in household' }, { status: 400 });
+            }
+
+            Rows = CalculateEqualSplit({
+                ExcludedUserIDs: [],
+                PayingUserIDs: participantIDs,
+                Amount: billAmount,
+            });
+        } else {
+            if (!participants || participants.length === 0) //validation section
+                return NextResponse.json({ error: 'no participants for percent split' }, { status: 400 });
+
+            for (let i = 0; i < participants.length; i++) {
+                if (!validIDs.has(participants[i].user_id))
+                    return NextResponse.json({ error: 'participants not in household' }, { status: 400 });
+            }
+
+            Rows = CalculatePercentSplit({
+                ExcludedUserIDs: [],
+                Amount: billAmount,
+                Participants: participants.map((participant) => ({
+                    UserID: BigInt(participant.user_id),
+                    Percent: Number(participant.percent)
+                })),
+            });
         }
 
-        const created = await prisma.recurring_expenses.create({
-            data: {
-                household_id: householdID,
-                creator_user_id: creatorUserID,
-                payer_user_id: payerUserID,
-                expense_name,
-                description,
-                amount: billAmount,
-                frequency: billFrequency,
-                next_expense_date: nextExpenseDate,
-                expense_category_id: expense_category_id ? BigInt(expense_category_id) : null
-            },
-            include: {
-                recurring_expense_creator: {
-                    select: { id: true, first_name: true, last_name: true }
+        const output = await prisma.$transaction(async function(tx) {
+            const recurringExpense = await tx.recurring_expenses.create({
+                data: {
+                    household_id: householdID,
+                    creator_user_id: creatorUserID,
+                    payer_user_id: payerUserID,
+                    expense_name,
+                    description,
+                    amount: billAmount,
+                    frequency: billFrequency,
+                    next_expense_date: nextExpenseDate,
+                    expense_category_id: expense_category_id ? BigInt(expense_category_id) : null,
+                    split_type: resolvedSplitType
                 },
-                recurring_expense_payer: {
-                    select: { id: true, first_name: true, last_name: true }
+                include: {
+                    recurring_expense_creator: {
+                        select: { id: true, first_name: true, last_name: true }
+                    },
+                    recurring_expense_payer: {
+                        select: { id: true, first_name: true, last_name: true }
+                    }
                 }
-            }
+            });
+
+            const splitData = [];
+            for(let i = 0; i < Rows.length; i++){
+                splitData.push({
+                user_id: Rows[i].UserID,
+                opted_out: Rows[i].OptStatus,
+                amount_to_pay: Rows[i].Amount,
+                recurring_expense_id: recurringExpense.id,
+            });
+
+            await tx.expense_splits.createMany({
+                data: splitData
+            });
+            return recurringExpense;
         });
 
         return NextResponse.json(
-        { success: true, recurring_expense: JSONifyBigInt(created) },
+        { success: true, recurring_expense: JSONifyBigInt(output) },
         { status: 201 }
         );
     } catch (err) {
@@ -272,11 +352,19 @@ export async function GET(request: NextRequest) {
                         last_name: true
                     },
                 },
-                recurring_expense_payer: { 
-                    select: { 
-                        id: true, 
+                recurring_expense_payer: {
+                    select: {
+                        id: true,
                         first_name: true,
                         last_name: true
+                    },
+                },
+                splits: {
+                    select: {
+                        id: true,
+                        user_id: true,
+                        amount_to_pay: true,
+                        opted_out: true,
                     },
                 },
             },
@@ -288,7 +376,8 @@ export async function GET(request: NextRequest) {
             {success: true, recurring_expenses: JSONifyBigInt(outcome)},
             { status: 200 }
         );
-    } catch (err) {
+    }
+    catch (err) {
         console.error(`Error fetching recurring expenses in household ${household_id}: `, err);
         return NextResponse.json({ error: 'An unexpected error occurred while fetching recurring expenses' }, { status: 500 });
     }

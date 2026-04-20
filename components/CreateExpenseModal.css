@@ -61,11 +61,21 @@ label {
     color: #333;
 }
 
-.input {
-    padding: 8px 10px;
+.cat-input {
+    padding: 8px 6px;
     font-size: 14px;
     border: 1px solid #ddd;
-    border-radius: 8px;
+    border-radius: 4px;
+    width: 100%;
+    color: black;
+    background: white;
+}
+
+.input {
+    padding: 8px 6px;
+    font-size: 14px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
     outline: none;
     width: 100%;
     color: black;

@@ -5,6 +5,7 @@ import "./CreateExpenseModal.css";
 import SelectMembers from "./SelectMembers";
 import IconField from "./Field";
 import { ClipboardIcon, DollarIcon, PenIcon } from "./Icons";
+import { CreateRecurringBillBody } from "@/app/api/recurring_expenses/route";
 
 interface GUIElement {
     isOpen: boolean;
@@ -26,6 +27,16 @@ type ExpenseParticipant = {
     percent: number;
 };
 
+// Return true only for nums with up to 2 decimal places
+// no 'e' notation, no negative numbers, no currency symbols
+function verifyMoney(value: string) {
+    const regex = /^\d+(\.\d{0,2})?$/;
+
+    console.log(value, regex.test(value));
+    
+    return regex.test(value);
+}
+
 export default function CreateExpenseModal({
     isOpen,
     onClose,
@@ -35,18 +46,19 @@ export default function CreateExpenseModal({
 }: GUIElement) {
     const [name, setName] = useState("");
     const [description, setDescription] = useState("");
-    const [amount, setAmount] = useState("");
+    const [amount, setAmount] = useState(0);
     const [deadline, setDate] = useState(new Date().toISOString().split("T")[0]);
     const [splitType, setSplitType] = useState("Equal");
     const [expenseParticipants, setExpenseParticipants] = useState<ExpenseParticipant[]>([]);
     const [payerUserId, setPayerUserId] = useState(curUserID);
-    const [paymentType, setPaymentType] = useState("once");
+    const [paymentType, setPaymentType] = useState("Once");
     const [categoryId, setCategoryId] = useState("");
     
     const [household_members, setMembers] = useState<HouseholdMember[] | null>(null);
     const [categories, setCategories] = useState<{ category_id: string; category_name: string }[] | null>(null);
     const [loading, setLoading] = useState(false);
     const [errors, setErrors] = useState("");
+    const [success, setSuccess] = useState(false);
     
     
     // Fetch household members and categories
@@ -119,35 +131,83 @@ export default function CreateExpenseModal({
         }[];
     };
     
+    type CreateRecurringBillBody {
+        household_id: string;
+        creator_user_id: string;
+        payer_user_id: string;
+        expense_name: string;
+        description: string;
+        amount: string | number;
+        frequency: string;
+        next_expense_date: string;
+        expense_category_id?: string;
+        split_type: string;
+        included_user_ids?: string[];
+        participants?: {
+            user_id: string;
+            percent: number;
+        }[];
+    }
+
     async function submitExpense() {
         if (!name || !amount) {
             setErrors("Name and amount required");
             return;
         }
-        
-        let body : CreateExpenseBody = {
-            expense_name: name,
-            amount: amount,
-            household_id: currentHouseholdId,
-            creator_user_id: curUserID,
-            payer_user_id: payerUserId,
-            split_type: splitType,
-            expense_date: deadline,
-            description: description || undefined,
-        };
-        
+        let body : CreateExpenseBody | CreateRecurringBillBody;
+
+        let is_recurring: boolean = paymentType !== "Once";
+
+        if (is_recurring) {
+            body = {
+                expense_name: name,
+                amount: amount,
+                household_id: currentHouseholdId,
+                creator_user_id: curUserID,
+                payer_user_id: payerUserId,
+                split_type: splitType,
+                expense_date: deadline,
+                description: description || ""
+            };
+        }
+        else {
+            body = {
+                expense_name: name,
+                amount: amount,
+                household_id: currentHouseholdId,
+                creator_user_id: curUserID,
+                payer_user_id: payerUserId,
+                split_type: splitType,
+                next_expense_date: deadline,
+                frequency: paymentType,
+                description: description || ""
+            };
+        }
+
         if (splitType === "Equal")
-            body.included_user_ids = expenseParticipants.map((participant) => participant.user_id);
+            body.included_user_ids = expenseParticipants.map((p) => p.user_id);
         else
             body.participants = expenseParticipants;
-        
+
+        if (categoryId)
+            body.expense_category_id = categoryId;
+
         let formSubmission = JSON.stringify(body);
-        
+
         try {
-            const res = await fetch("/api/expenses", {
-                method: "POST",
-                body: formSubmission
-            });
+            let res: Response;
+            if (is_recurring) {
+                res = await fetch("/api/recurring_expenses", {
+                    method: "POST",
+                    body: formSubmission
+                });
+            }
+            else {
+                res = await fetch("/api/expenses", {
+                    method: "POST",
+                    body: formSubmission
+                });
+            }
             
             const data = await res.json();
             
@@ -156,6 +216,7 @@ export default function CreateExpenseModal({
                 return;
             }
             
+            setSuccess(true);
             onClose();
         }
         catch {
@@ -184,29 +245,33 @@ export default function CreateExpenseModal({
             <>
             <div className="hor">
             <IconField
-            name = "Name"
+            name        = "Name"
             value       = {name}
-            onChange    = {(nameChange) => setName(nameChange.target.value)}
             icon        = {<PenIcon/>}
+            onChange    = {(nameChange) => setName(nameChange.target.value)}
             />
             
             <IconField
-                name = "Amount"
+                name        = "Amount"
                 value       = {amount}
-                onChange    = {(amount) => setAmount(amount.target.value)}
+                // no more than 2 decimal places
+                onChange    = {(amount) => verifyMoney(amount.target.value) && setAmount(amount.target.value)}
                 icon        = {<DollarIcon/>}
+                type        = "number"
             />
             </div>
             
             <div className="hor">
                 <IconField
-                    name = "Description"
+                    name        = "Description"
                     value       = {description}
                     onChange    = {(descriptionChange) => setDescription(descriptionChange.target.value)}
-                    icon = {<ClipboardIcon/>}
+                    icon        = {<ClipboardIcon/>}
                 />
+                <div style={{flex: 1}}>
+                <label>Category</label>
                 <select
-                    className   ="input"
+                    className   = "cat-input"
                     name        = "Category"
                     value       = {categoryId}
                     onChange    = {(event) => {setCategoryId(event.target.value)}}
@@ -219,6 +284,8 @@ export default function CreateExpenseModal({
                     ))
                 }
                 </select>
+                </div>
+                
             </div>
             
             <div>
@@ -262,24 +329,45 @@ export default function CreateExpenseModal({
                         participant.user_id === userId ? { user_id: userId, percent: percentSplit } : participant
                     )
                 )
-            }}/>            
+            }}/>
+
+    <div className="hor">
+        <IconField
+            name        = "Deadline"
+            value       = {deadline}
+            onChange    = {(deadline)  => setDate(deadline.target.value)}
+            icon        = {<div />}
+            type        = "date"
+        />
+
+        <div style={{flex: 1}}>
+            <label>Recurrence</label>
+            <select
+                className="cat-input"
+                name        = "Recurrence"
+                value       = {paymentType}
+                onChange    = {(paymentType) => setPaymentType(paymentType.target.value)}
+            >   
+                <option value="Once">One-time</option>
+                <option value="Weekly">Weekly</option>
+                <option value="Monthly">Monthly</option>
+            </select>
+        </div>
+    </div>
+
+
     
-    <label>{paymentType == "once" ? "Due Date" : "Start Date"}</label>
-    <input id='deadline'
-    type      = "date"
-    value     = {deadline}
-    onChange  = {(deadline)  => setDate(deadline.target.value)}
-    className = "input"
-    />
-    
-    { errors && 
-        <p className = "error">{errors}</p>
+    { 
+        errors && <p className = "error">{errors}</p>
+    }
+    {
+        success && <p className = "success">Expense created successfully!</p>
     }
     
     <div className = "actions">
-    <button className = "btn-submit" onClick = {submitExpense}>Add Expense</button>
-    <button className = "btn-cancel" onClick = {onClose}>Cancel</button>
-    </div>
+        <button className = "btn-submit" onClick = {submitExpense}>Add Expense</button>
+        <button className = "btn-cancel" onClick = {onClose}>Cancel</button>
+        </div>
     </>
 )}
 </div>

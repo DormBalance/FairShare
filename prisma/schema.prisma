@@ -108,15 +108,17 @@ model recurring_expenses{
   expense_category_id BigInt? 
   is_active Boolean @default(true) 
   frequency RecurringExpenseFrequency
-  next_expense_date DateTime  
+  next_expense_date DateTime
+  split_type SplitType @default(Equal)
 
   recurring_expense_category expense_categories? @relation(fields: [expense_category_id], references: [id], onDelete: SetNull)
   household households @relation(fields: [household_id], references: [id], onDelete: Cascade)
   recurring_expense_creator      users?     @relation("RecurringExpenseCreator",fields: [creator_user_id], references: [id], onDelete: Restrict)
   recurring_expense_payer users? @relation("RecurringExpensePayer", fields: [payer_user_id], references: [id], onDelete: Restrict)
-  expenses expenses[] //each recurring expense can have multiple expenses over time 
+  expenses expenses[] //each recurring expense can have multiple expenses over time
+  splits   expense_splits[] //split template for generated expenses
 
-  @@index([household_id, next_expense_date]) 
+  @@index([household_id, next_expense_date])
   @@index([payer_user_id])
   @@index([creator_user_id])
   @@index([expense_category_id])
@@ -175,18 +177,21 @@ model settlements{
 model expense_splits{
   id BigInt @id @default(autoincrement())
   created_at DateTime @default(now())
-  expense_id BigInt
-  user_id BigInt 
+  expense_id             BigInt?
+  recurring_expense_id   BigInt?
+  user_id BigInt
   amount_to_pay Decimal
   opted_out Boolean @default(false)
 
-  expense expenses @relation(fields: [expense_id], references: [id], onDelete: Cascade)
+  expense            expenses?           @relation(fields: [expense_id], references: [id], onDelete: Cascade)
+  recurring_expense  recurring_expenses? @relation(fields: [recurring_expense_id], references: [id], onDelete: Cascade)
   user users @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([user_id])
   @@index([expense_id])
-  @@unique([expense_id, user_id]) //only 1 split per expense per user
-
+  @@index([recurring_expense_id])
+  @@unique([expense_id, user_id])            //only 1 split per expense per user
+  @@unique([recurring_expense_id, user_id])  //only 1 split per recurring expense per user
 }
 
 
