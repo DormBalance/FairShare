@@ -9,6 +9,7 @@ import { getExpenses } from "@/lib/api";
 import { GetExpenseResponse } from "@/types";
 import {Search} from "lucide-react";
 import RecentExpensesCard from "@/components/RecentExpensesCard";
+import "../dashboard/dashboard.css";
 import "./expenses.css";
 
 
@@ -53,14 +54,14 @@ function generateStatusText(expense: GetExpenseResponse, currentUser: string): s
 export default function ExpensesPage() {
     //copy and pasted from dashboar page
     //const {user} = useAuth();
-    let householdID: string = "4"; //these are hardocded values based on values that are currently in table. can delete once we have authentication.
-    let currUser = "10";
+    let householdID: string = "1"; //these are hardocded values based on values that are currently in table. can delete once we have authentication.
+    let currUser = "2";
     //let householdID: string = user?.user_metadata?.household_id ?? "";
     //let currUser = user?.id ?? "";
     let [expenses, setExpenses] = useState<GetExpenseResponse[]>([]);
     let[loading, setLoading] = useState(true);
     let [error, setError] = useState("");
-    let[tab, setTab = useState<"all" | "mine">("all")];
+    let[tab, setTab] = useState<"all" | "yours">("all");
     let[search, setSearch] = useState("");
 
     async function loadExpenses(){
@@ -140,7 +141,7 @@ export default function ExpensesPage() {
                 </div>
             </div>
             {error && <p style={{color: "red", marginBottom: 16}}>{error}</p>}
-            {loading && <p style={{color: "#888", marginBottomn: 16}}>Loading...</p>}
+            {loading && <p style={{color: "#888", marginBottom: 16}}>Loading...</p>}
 
             <RecentExpensesCard rows={expenseRows} maxRows={Infinity} viewAll={false} scrollable={true}/>
 

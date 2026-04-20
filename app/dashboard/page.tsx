@@ -70,8 +70,8 @@ function generateStatusText(expense: GetExpenseResponse, currentUser: string): s
 
 export default function DashboardPage() {
     //const {user} = useAuth();
-    let householdID: string = "4"; //these are hardocded values based on values that are currently in table. can delete once we have authentication.
-    let currUser = "10";
+    let householdID: string = "1"; //these are hardocded values based on values that are currently in table. can delete once we have authentication.
+    let currUser = "2";
     //let householdID: string = user?.user_metadata?.household_id ?? "";
     //let currUser = user?.id ?? "";
     let [expenses, setExpenses] = useState<GetExpenseResponse[]>([]);
