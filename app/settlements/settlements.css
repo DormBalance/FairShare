@@ -116,8 +116,11 @@
 }
 
 .settlement-history-header {
+    display: flex;
+    align-items: center;
     padding: 24px 28px;
     border-bottom: 1px solid #ececef;
+    justify-content: space-between;
 }
 
 .settlements-cards-titles {
@@ -140,4 +143,46 @@
     grid-template-columns: 1fr 1fr;
     gap: 16px;
     margin-bottom: 24px;
+}
+
+.view-all-btn {
+    background: #ffffff;
+    color: #1a1a1a;
+    border: 1px solid #e2e0db;
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.settlement-history-table-header {
+    display: grid;
+    grid-template-columns: 1.5fr 2fr 2fr 1fr 1fr 1.2fr;
+    padding: 8px 28px;
+    border-bottom: 1px solid #e3e3e5;
+    font-size: 13px;
+    font-weight: 500;
+    color: #a8a5a0;
+}
+
+.settlement-history-row {
+    display: grid;
+    grid-template-columns: 1.5fr 2fr 2fr 1fr 1fr 1.2fr;
+    align-items: center;
+    padding: 14px 28px;
+    border-bottom: 1px solid #f0f0f2;
+    font-size: 14px;
+    color: #2a2a2a;
+}
+
+.settlement-history-row:last-child {
+    border-bottom: none;
+}
+
+.status-completed {
+    color: #1a7a4a;
+    font-size: 13px;
+    font-weight: 500;
 }

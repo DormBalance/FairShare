@@ -5,9 +5,10 @@ import DashboardLayout from "@/components/DashboardLayout";
 import StatCard from "@/components/StatCard";
 import "../dashboard/dashboard.css";
 import "./settlements.css";
+import { GetSettlementResponse } from "@/types";
+import { getSettlements } from "@/lib/api";
 
 
-/*
 function formatDate(dateString: string): string{
     return new Date(dateString).toLocaleDateString("en-US", {
         month: "short",
@@ -15,7 +16,6 @@ function formatDate(dateString: string): string{
         year: "numeric",
     });
 }
-*/
 
 function formatCurrency(amount: number): string{
     return new Intl.NumberFormat("en-US", {
@@ -38,7 +38,8 @@ export default function SettlementsPage() {
         //let householdID: string = user?.user_metadata?.household_id ?? "";
         //let currUser = user?.id ?? "";
         let [balances, setBalance] = useState<Balance[]>([]);
-        let[loading, setLoading] = useState(true);
+        let [settlements, setSettlements] = useState<GetSettlementResponse[]>([]);
+        let [loading, setLoading] = useState(true);
         let [error, setError] = useState("");
     
         async function loadExpenses(){
@@ -54,6 +55,17 @@ export default function SettlementsPage() {
 
             let balancesInfo = await balances.json();
             setBalance(balancesInfo.balances);
+            setLoading(false);
+
+            let settlementsResult = await getSettlements(householdID);
+
+            if (settlementsResult.success === false) {
+                setError("Failed to load settlement history");
+                setLoading(false);
+                return;
+            }
+
+            setSettlements(settlementsResult.data);
             setLoading(false);
         }
          useEffect(() => {
@@ -136,7 +148,7 @@ export default function SettlementsPage() {
                                 <div className = "member">{balance.to.charAt(0).toUpperCase()}</div>
                                     {balance.to}
                             </span>
-                            <span className = "amount-owed">You're Owed{formatCurrency(Number(balance.amount))}</span>
+                            <span className = "amount-owed">You're Owed {formatCurrency(Number(balance.amount))}</span>
                         </div>
                         ))
                     )}
@@ -148,8 +160,42 @@ export default function SettlementsPage() {
             <div className = "settlement-history-card">
                 <div className = "settlement-history-header">
                     <h2 className = "settlements-cards-titles">Settlement History</h2>
+                    <button className="view-all-btn">View All</button>
                 </div>
-                <div className = "settlements-empty">Settlement history will be implemented</div>
+                <div className = "settlement-history-table-header">
+                    <span>Date</span>
+                    <span>From</span>
+                    <span>To</span>
+                    <span>Amount</span>
+                    <span>Method</span>
+                    <span>Status</span>
+                </div>
+                {settlements.length === 0 ? (
+                    <div className="settlements-empty">No settlements yet</div>
+                ) : (
+                    settlements.map((settlement) => (
+                        <div className="settlement-history-row" key={settlement.id}>
+                            <span>{formatDate(settlement.payment_date)}</span>
+                            <span className="settlement-member">
+                                <div className="member">
+                                    {settlement.settlement_payer.first_name.charAt(0).toUpperCase()}
+                                </div>
+                                {settlement.settlement_payer.first_name} {settlement.settlement_payer.last_name}
+                            </span>
+
+                            <span className="settlement-member">
+                                <div className="member">
+                                    {settlement.settlement_recipient.first_name.charAt(0).toUpperCase()}
+                                </div>
+                                {settlement.settlement_recipient.first_name} {settlement.settlement_recipient.last_name}
+                            </span>
+
+                            <span>{formatCurrency(Number(settlement.amount))}</span>
+                            <span>{settlement.payment_method}</span>
+                            <span className="status-completed">Completed</span>
+                        </div>
+                    ))
+                )}
             </div>
         </DashboardLayout>
     );
