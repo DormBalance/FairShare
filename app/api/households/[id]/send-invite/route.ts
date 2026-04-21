@@ -6,7 +6,7 @@ import { Resend } from 'resend'
 import { prisma } from '../../../../../lib/prisma'
 import { requireUser, requireAdmin } from '../../../../../lib/auth_helpers'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+const resend = new Resend(process.env.RESEBD_API_KEY)
 
 export async function POST(
     request: NextRequest,
