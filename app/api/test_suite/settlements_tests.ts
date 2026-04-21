@@ -1,5 +1,3 @@
-import { run } from "node:test";
-
 const SETTLEMENTS_URL = "http://localhost:3000/api/settlements";
 
 interface CreateSettlementBody {
