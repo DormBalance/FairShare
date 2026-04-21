@@ -65,6 +65,9 @@ export default function CreateExpenseModal({
         () => {
             setLoading(true);
             
+            if (!isOpen || !curUserID || !currentHouseholdId)
+                return;
+
             let getMembers = async () => {
                 try {
                     const response = await fetch(`/api/household_members?userId=${curUserID}`);
@@ -88,8 +91,12 @@ export default function CreateExpenseModal({
 
             let getCategories = async () => {
                 try {
-                    const response = await fetch(`/api/expense_category?household_id=${currentHouseholdId}`);
+                    //explicit 'get' await fetch(`/api/expense_category?household_id=${currentHouseholdId}`);
+                    const url = `/api/expense_category?household_id=${currentHouseholdId}`;
+                    const response = await fetch(url, { method: "GET" });
+
                     const data = await response.json();
+                    console.log("Fetched categories:", data);
                     const categories = data.categories;
 
                     setCategories(categories);
@@ -229,7 +236,7 @@ export default function CreateExpenseModal({
         }
     }
     
-    const loading_text = "...";
+    const loading_text = "Loading...";
     
     return (
         <div className = "overlay">

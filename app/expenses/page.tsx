@@ -92,8 +92,9 @@ export default function ExpensesPage() {
         setError("");
 
         let result = await getExpenses(householdID);
+        
         if(result.success === false){
-            setError(result.error);
+            console.log("Fetched expenses:", result);
             setLoading(false);
             return;
         }

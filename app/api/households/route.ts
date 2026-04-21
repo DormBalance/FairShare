@@ -45,10 +45,25 @@ export async function POST(request: NextRequest) {
         data: [
           { household_id: h.id, name: 'Groceries' },
           { household_id: h.id, name: 'Rent' },
+          { household_id: h.id, name: 'Dining' },
+          { household_id: h.id, name: 'Utilities' },
+          { household_id: h.id, name: 'Entertainment' },
+          { household_id: h.id, name: 'Transportation' },
+          { household_id: h.id, name: 'Miscellaneous' }
         ],
       })
       return h
     })
+
+    const categories = ["Groceries", "Rent", "Dining", "Utilities", "Entertainment", "Transportation", "Miscellaneous"];
+    for (const category_name of categories) {
+      await fetch(`${request.nextUrl.origin}/api/expense_category`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ household_id: household.id.toString(), category_name }),
+      })
+    }
+
 
     return NextResponse.json(JSONifyBigInt(household), { status: 201 })
   } catch (err) {
