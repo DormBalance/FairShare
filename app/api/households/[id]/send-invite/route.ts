@@ -1,19 +1,12 @@
-// Claude added the invite logic for this route.
-// Pattern referenced from Supabase Auth Admin docs (inviteUserByEmail):
-// https://supabase.com/docs/reference/javascript/auth-admin-inviteuserbyemail
-// and Next.js App Router API route docs:
-// https://nextjs.org/docs/app/building-your-application/routing/route-handlers
+// ChatGPT wrote the email linking with Resend as Supabase didn't share the invite code correctly like we expected.
+// Pattern referenced from Resend docs: https://resend.com/docs/send-with-nextjs
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { Resend } from 'resend'
 import { prisma } from '../../../../../lib/prisma'
 import { requireUser, requireAdmin } from '../../../../../lib/auth_helpers'
 
-const supabaseAdmin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-)
+const resend = new Resend(process.env.RESEBD_API_KEY)
 
 export async function POST(
     request: NextRequest,
@@ -53,10 +46,16 @@ export async function POST(
 
         if (!household) return NextResponse.json({ error: 'Household not found' }, { status: 404 })
 
-        const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
-
-        const { error } = await supabaseAdmin.auth.admin.inviteUserByEmail(body.email, {
-            redirectTo: `${appUrl}/households?code=${household.invite_code}`
+        const { error } = await resend.emails.send({
+            from: 'FairShare <noreply@fairshare-expenses.com>',
+            to: body.email,
+            subject: 'You have been invited to FairShare',
+            html: `
+                <h2>You have been invited</h2>
+                <p>You have been invited to join a household on FairShare. Follow this link to accept the invite:</p>
+                <p>Your invite code is: <strong>${household.invite_code}</strong></p>
+                <p><a href="https://fairshare-expenses.com">Create an account</a></p>
+            `
         })
 
         if (error) return NextResponse.json({ error: error.message }, { status: 400 })
