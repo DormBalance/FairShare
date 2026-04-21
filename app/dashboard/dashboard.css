@@ -91,6 +91,41 @@ button {
     background: #f6f6f7;
 }
 
+.topbar-dropdown-item-neutral {
+    color: #2b2b2b !important;
+}
+
+.topbar-dropdown-back {
+    width: 100%;
+    text-align: left;
+    padding: 4px 2px;
+    font-size: 11px;
+    color: #aaa;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-family: Arial;
+}
+
+.topbar-dropdown-back:hover {
+    color: #555;
+}
+
+.topbar-dropdown-input {
+    width: 100%;
+    padding: 6px 8px;
+    font-size: 12px;
+    border: 1px solid #e1e1e3;
+    border-radius: 6px;
+    font-family: Arial;
+    outline: none;
+    box-sizing: border-box;
+}
+
+.topbar-dropdown-input:focus {
+    border-color: #aaa;
+}
+
 .topbar-profile-picture {
     width: 36px;
     height: 36px;

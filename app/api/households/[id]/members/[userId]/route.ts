@@ -5,9 +5,16 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { HouseholdRole } from '@prisma/client'
+import { createClient } from '@supabase/supabase-js'
 import { prisma } from '../../../../../../lib/prisma'
 import { requireUser, requireAdmin } from '../../../../../../lib/auth_helpers'
 import JSONifyBigInt from '../../../../../../utilities/BigInt'
+
+const supabaseAdmin = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+)
 
 export async function PATCH(
   request: NextRequest,
@@ -93,7 +100,21 @@ export async function DELETE(
       return NextResponse.json({ error: 'Cannot remove the last admin' }, { status: 400 })
     }
 
+    const removedUser = await prisma.users.findFirst({
+      where: { id: BigInt(userId) },
+      select: { email: true }
+    })
+
     await prisma.household_members.delete({ where: { id: membership.id } })
+
+    // Pattern referenced from Supabase Auth Admin docs (admin.signOut and admin.listUsers):
+    // https://supabase.com/docs/reference/javascript/auth-admin-signout
+    // https://supabase.com/docs/reference/javascript/auth-admin-listusers
+    if (removedUser?.email) {
+      const { data: { users } } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 })
+      const authUser = users.find((u: any) => u.email === removedUser.email)
+      if (authUser) await supabaseAdmin.auth.admin.signOut(authUser.id, 'global')
+    }
 
     return NextResponse.json({ success: true }, { status: 200 })
   } catch (err) {
