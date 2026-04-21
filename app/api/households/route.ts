@@ -41,6 +41,12 @@ export async function POST(request: NextRequest) {
       await tx.household_members.create({
         data: { household_id: h.id, user_id: dbUser.id, role: 'Admin' },
       })
+      await tx.expense_categories.createMany({
+        data: [
+          { household_id: h.id, name: 'Groceries' },
+          { household_id: h.id, name: 'Rent' },
+        ],
+      })
       return h
     })
 
