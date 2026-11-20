@@ -4,7 +4,7 @@
 
 FairShare eliminates the awkward "who owes who" conversation by giving households a single, transparent place to log expenses, split bills, and record settle-up payments. No more Excel sheets. No more Venmo screenshot debates.
 
-> 🚧 Active development — website publishing in progress. Android mobile app planned.
+
 
 ---
 
