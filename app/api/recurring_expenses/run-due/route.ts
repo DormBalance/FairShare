@@ -1,126 +1,92 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient, SplitType, RecurringExpenseFrequency } from '@prisma/client';
-import { PrismaPg } from '@prisma/adapter-pg';
-import JSONifyBigInt from '../../../../utilities/BigInt';
-import { CalculateEqualSplit } from '../../expenses/split';
+import { NextRequest, NextResponse } from "next/server";
+import { RecurringExpenseFrequency } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
+import { CalculateEqualSplit } from "../../expenses/split";
 
-const adapter = new PrismaPg({connectionString: process.env.DATABASE_URL});
-const prisma = new PrismaClient({adapter});
-
-function addFrequency(date: Date, frequency: RecurringExpenseFrequency): Date {
-    const newDate = new Date(date);
-
-    if (frequency === RecurringExpenseFrequency.Weekly) {
-        newDate.setDate(newDate.getDate() + 7);
+function nextOccurrence(date: Date, frequency: RecurringExpenseFrequency) {
+    const next = new Date(date);
+    if (frequency === "Weekly") {
+        next.setUTCDate(next.getUTCDate() + 7);
     } else {
-        newDate.setMonth(newDate.getMonth() + 1);
+        const day = next.getUTCDate();
+        next.setUTCDate(1);
+        next.setUTCMonth(next.getUTCMonth() + 1);
+        const lastDay = new Date(Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 0)).getUTCDate();
+        next.setUTCDate(Math.min(day, lastDay));
     }
-
-    return newDate;
+    return next;
 }
 
-export async function POST(_request: NextRequest) {
-    const now = new Date();
+export async function POST(request: NextRequest) {
+    const secret = process.env.CRON_SECRET;
+    if (!secret || request.headers.get("Authorization") !== `Bearer ${secret}`) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
     try {
-        const dueRecurringExpenses = await prisma.recurring_expenses.findMany({
-            where: {
-                is_active: true,
-                next_expense_date: { lte: now },
-            },
+        const due = await prisma.recurring_expenses.findMany({
+            where: { is_active: true, next_expense_date: { lte: new Date() } },
             include: {
-                household: {
-                    include: {
-                        members: { select: { user_id: true } }
-                    },
-                },
+                splits: { select: { user_id: true, opted_out: true, amount_to_pay: true } },
+                household: { include: { members: { select: { user_id: true } } } },
             },
         });
 
-        const due_count = dueRecurringExpenses.length;
+        const details = [];
+        for (const bill of due) {
+            const expense = await prisma.$transaction(async (tx) => {
+                // Advance the exact occurrence atomically so concurrent runs cannot post it twice.
+                const claimed = await tx.recurring_expenses.updateMany({
+                    where: { id: bill.id, is_active: true, next_expense_date: bill.next_expense_date },
+                    data: { next_expense_date: nextOccurrence(bill.next_expense_date, bill.frequency) },
+                });
+                if (!claimed.count) return null;
 
-        const result = await prisma.$transaction(async (tx) => {
-            let created_count = 0;
-            let skipped_count = 0;
-            const details = [];
-
-            for (const expense of dueRecurringExpenses) {
+                // Older templates may already have an expense for their first due date.
                 const existing = await tx.expenses.findFirst({
-                    where: {
-                        recurring_expense_id: expense.id,
-                        expense_date: expense.next_expense_date,
-                    },
+                    where: { recurring_expense_id: bill.id, expense_date: bill.next_expense_date },
+                    select: { id: true },
                 });
+                if (existing) return null;
 
-                if (existing) {
-                    skipped_count++;
-                    details.push({ recurring_expense_id: expense.id.toString(), status: 'skipped' });
-                    continue;
-                }
-
-                const memberIds = expense.household.members.map((m) => m.user_id);
-                
-                const splitRows = CalculateEqualSplit({
-                    PayingUserIDs: memberIds,
+                const splits = bill.splits.length ? bill.splits : CalculateEqualSplit({
+                    PayingUserIDs: bill.household.members.map((member) => member.user_id),
                     ExcludedUserIDs: [],
-                    Amount: Number(expense.amount),
-                });
-                
-                const createdExpense = await tx.expenses.create({
+                    Amount: Number(bill.amount),
+                }).map((split) => ({
+                    user_id: split.UserID, opted_out: split.OptStatus, amount_to_pay: split.Amount,
+                }));
+
+                return tx.expenses.create({
                     data: {
-                        description: expense.description,
-                        expense_name: expense.expense_name,
-                        expense_category_id: expense.expense_category_id,
-                        recurring_expense_id: expense.id,
-                        household_id: expense.household_id,
-                        split_type: SplitType.Equal,
-                        amount: Number(expense.amount),
-                        expense_date: expense.next_expense_date,
-                        creator_user_id: expense.creator_user_id,
-                        payer_user_id: expense.payer_user_id,
+                        description: bill.description,
+                        expense_name: bill.expense_name,
+                        expense_category_id: bill.expense_category_id,
+                        recurring_expense_id: bill.id,
+                        household_id: bill.household_id,
+                        split_type: bill.split_type,
+                        amount: bill.amount,
+                        expense_date: bill.next_expense_date,
+                        creator_user_id: bill.creator_user_id,
+                        payer_user_id: bill.payer_user_id,
+                        splits: { createMany: { data: splits } },
                     },
+                    select: { id: true },
                 });
+            });
 
-                await tx.expense_splits.createMany({
-                    data: splitRows.map((row) => ({
-                        user_id: row.UserID,
-                        opted_out: row.OptStatus,
-                        amount_to_pay: row.Amount,
-                        expense_id: createdExpense.id,
-                    }))
-                });
+            details.push(expense ? {
+                recurring_expense_id: bill.id.toString(), expense_id: expense.id.toString(), status: "created",
+            } : { recurring_expense_id: bill.id.toString(), status: "skipped" });
+        }
 
-                const nextDate = addFrequency(expense.next_expense_date, expense.frequency);
-
-                await tx.recurring_expenses.update({
-                    where: { id: expense.id },
-                    data: { next_expense_date: nextDate },
-                });
-
-                created_count++;
-                details.push({
-                    recurring_expense_id: expense.id.toString(),
-                    expense_id: createdExpense.id.toString(),
-                    status: 'created',
-                });
-
-                return {
-                    created_count,
-                    skipped_count,
-                    details,
-                }
-            }
+        const created = details.filter((entry) => entry.status === "created").length;
+        return NextResponse.json({
+            success: true,
+            summary: { due_count: due.length, created_count: created, skipped_count: due.length - created, details },
         });
-
-    return NextResponse.json(
-        { success: true, summary: JSONifyBigInt({ due_count, ...result }) },
-        { status: 200 },
-    );
-    } catch (err) {
-        console.error('Error running due recurring expenses:', err);
-        return NextResponse.json(
-            { error: 'An error occurred while processing due recurring expenses' }, 
-            { status: 500 }
-        );
+    } catch (error) {
+        console.error("Error processing recurring bills:", error);
+        return NextResponse.json({ error: "Could not process due recurring bills" }, { status: 500 });
     }
 }

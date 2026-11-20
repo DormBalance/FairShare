@@ -1,0 +1,56 @@
+.account-page {
+    display: grid;
+    min-height: 100dvh;
+    place-items: center;
+    padding: 1rem;
+    background: radial-gradient(ellipse at 75% 15%, #dfede3, transparent 58%), var(--canvas);
+}
+.account-card {
+    width: min(100%, 31rem);
+    padding: clamp(1.25rem, 6vw, 2.5rem);
+    border: 1px solid var(--line);
+    border-radius: 1.5rem;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+    animation: reveal .25s ease-out;
+}
+.account-header { margin: 0 0 1.5rem; }
+.account-header h1 { margin: .85rem 0 .35rem; font-size: clamp(1.7rem, 5vw, 2.5rem); letter-spacing: -.06em; }
+.account-header p { margin: 0; color: var(--muted); line-height: 1.5; }
+.account-form, .account-field { display: grid; gap: .5rem; min-width: 0; }
+.account-form { gap: .95rem; }
+.account-field label { font-size: .9rem; font-weight: 650; }
+.account-field input, .account-field textarea {
+    width: 100%;
+    min-width: 0;
+    min-height: 2.75rem;
+    padding: .65rem .75rem;
+    border: 1px solid var(--line);
+    border-radius: .65rem;
+    color: var(--ink);
+    background: #fbfdfa;
+}
+.account-submit { width: 100%; }
+.account-toggle { margin: 1.2rem 0 0; color: var(--muted); text-align: center; }
+.account-toggle button {
+    padding: .3rem;
+    border: 0;
+    color: var(--accent);
+    background: transparent;
+    text-decoration: underline;
+    text-underline-offset: .2rem;
+    font-weight: 700;
+}
+.account-name-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem; }
+.code-inputs { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: .25rem; }
+.account-field .code-input { padding: .4rem 0; text-align: center; font-weight: 700; }
+@media (max-width: 420px) {
+    .account-name-row { grid-template-columns: 1fr; }
+}
+.account-notice {
+    margin: 0;
+    padding: .85rem;
+    border-radius: .7rem;
+    color: var(--accent);
+    background: var(--accent-soft);
+}

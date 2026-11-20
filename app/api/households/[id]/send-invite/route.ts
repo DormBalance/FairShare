@@ -6,8 +6,6 @@ import { Resend } from 'resend'
 import { prisma } from '../../../../../lib/prisma'
 import { requireUser, requireAdmin } from '../../../../../lib/auth_helpers'
 
-const resend = new Resend(process.env.RESEBD_API_KEY)
-
 export async function POST(
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
@@ -34,11 +32,15 @@ export async function POST(
         return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
     }
 
-    if (!body.email) {
-        return NextResponse.json({ error: 'email is required' }, { status: 400 })
+    if (typeof body?.email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email.trim())) {
+        return NextResponse.json({ error: 'A valid email address is required' }, { status: 400 })
     }
 
+    const apiKey = process.env.RESEND_API_KEY ?? process.env.RESEBD_API_KEY
+    if (!apiKey) return NextResponse.json({ error: 'Email invites aren’t configured' }, { status: 503 })
+
     try {
+        const resend = new Resend(apiKey)
         const household = await prisma.households.findUnique({
             where: { id: BigInt(id) },
             select: { invite_code: true, name: true }
@@ -48,7 +50,7 @@ export async function POST(
 
         const { error } = await resend.emails.send({
             from: 'FairShare <noreply@fairshare-expenses.com>',
-            to: body.email,
+            to: body.email.trim(),
             subject: 'You have been invited to FairShare',
             html: `
                 <h2>You have been invited</h2>

@@ -4,17 +4,10 @@
 // AI was used to speed up translating those docs into this boilerplate.
 
 import { NextRequest, NextResponse } from 'next/server'
-import { HouseholdRole } from '@prisma/client'
-import { createClient } from '@supabase/supabase-js'
+import { Prisma } from '@prisma/client'
 import { prisma } from '../../../../../../lib/prisma'
 import { requireUser, requireAdmin } from '../../../../../../lib/auth_helpers'
 import JSONifyBigInt from '../../../../../../utilities/BigInt'
-
-const supabaseAdmin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-)
 
 export async function PATCH(
   request: NextRequest,
@@ -42,24 +35,34 @@ export async function PATCH(
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  if (body.role !== 'Admin' && body.role !== 'Member') {
+  if (body?.role !== 'Admin' && body.role !== 'Member') {
     return NextResponse.json({ error: "role must be 'Admin' or 'Member'" }, { status: 400 })
   }
 
   try {
-    const membership = await prisma.household_members.findFirst({
-      where: { household_id: BigInt(id), user_id: BigInt(userId) },
-    })
+    const householdId = BigInt(id)
+    const memberId = BigInt(userId)
+    return await prisma.$transaction(async (tx) => {
+      const membership = await tx.household_members.findFirst({
+        where: { household_id: householdId, user_id: memberId },
+      })
+      if (!membership) return NextResponse.json({ error: 'User is not a member' }, { status: 404 })
 
-    if (!membership) return NextResponse.json({ error: 'User is not a member' }, { status: 404 })
+      if (membership.role === 'Admin' && body.role === 'Member') {
+        const admins = await tx.household_members.count({ where: { household_id: householdId, role: 'Admin' } })
+        if (admins <= 1) return NextResponse.json({ error: 'Cannot demote the last admin' }, { status: 400 })
+      }
 
-    const updated = await prisma.household_members.update({
-      where: { id: membership.id },
-      data:  { role: body.role as HouseholdRole },
-    })
-
-    return NextResponse.json(JSONifyBigInt(updated), { status: 200 })
+      const updated = await tx.household_members.update({
+        where: { id: membership.id },
+        data: { role: body.role === 'Admin' ? 'Admin' : 'Member' },
+      })
+      return NextResponse.json(JSONifyBigInt(updated), { status: 200 })
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
   } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2034') {
+      return NextResponse.json({ error: 'Membership changed. Please try again.' }, { status: 409 })
+    }
     console.error('Error changing role:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
@@ -85,39 +88,26 @@ export async function DELETE(
   }
 
   try {
-    const membership = await prisma.household_members.findFirst({
-      where: { household_id: BigInt(id), user_id: BigInt(userId) },
-    })
+    const householdId = BigInt(id)
+    const memberId = BigInt(userId)
+    return await prisma.$transaction(async (tx) => {
+      const membership = await tx.household_members.findFirst({
+        where: { household_id: householdId, user_id: memberId },
+      })
+      if (!membership) return NextResponse.json({ error: 'User is not a member' }, { status: 404 })
 
-    if (!membership) return NextResponse.json({ error: 'User is not a member' }, { status: 404 })
+      if (membership.role === 'Admin') {
+        const admins = await tx.household_members.count({ where: { household_id: householdId, role: 'Admin' } })
+        if (admins <= 1) return NextResponse.json({ error: 'Cannot remove the last admin' }, { status: 400 })
+      }
 
-    const adminCount = await prisma.household_members.count({
-      where: { household_id: BigInt(id), role: 'Admin' },
-    })
-
-    // an admin cannot be removed if they are the last admin in the household
-    if (adminCount === 1 && membership.role === 'Admin') {
-      return NextResponse.json({ error: 'Cannot remove the last admin' }, { status: 400 })
-    }
-
-    const removedUser = await prisma.users.findFirst({
-      where: { id: BigInt(userId) },
-      select: { email: true }
-    })
-
-    await prisma.household_members.delete({ where: { id: membership.id } })
-
-    // Pattern referenced from Supabase Auth Admin docs (admin.signOut and admin.listUsers):
-    // https://supabase.com/docs/reference/javascript/auth-admin-signout
-    // https://supabase.com/docs/reference/javascript/auth-admin-listusers
-    if (removedUser?.email) {
-      const { data: { users } } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 })
-      const authUser = users.find((u: any) => u.email === removedUser.email)
-      if (authUser) await supabaseAdmin.auth.admin.signOut(authUser.id, 'global')
-    }
-
-    return NextResponse.json({ success: true }, { status: 200 })
+      await tx.household_members.delete({ where: { id: membership.id } })
+      return NextResponse.json({ success: true }, { status: 200 })
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
   } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2034') {
+      return NextResponse.json({ error: 'Membership changed. Please try again.' }, { status: 409 })
+    }
     console.error('Error removing member:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }

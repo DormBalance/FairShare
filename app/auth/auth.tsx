@@ -8,7 +8,7 @@ type AuthContextType = {
     user: User | null;
     session: Session | null;
     loading: boolean;
-    signUp(email: string, password: string): Promise<{error: string | null}>;
+    signUp(email: string, password: string, profile: { first_name: string; last_name: string }): Promise<{error: string | null}>;
     signIn(email: string, password: string): Promise<{error: string | null}>;
     signOut(): Promise<void>;
 };
@@ -51,8 +51,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     }, []);
 
-        async function signUp( email: string, password: string): Promise<{error: string | null}>{
-            const { data, error } = await supabase.auth.signUp({ email, password});
+        async function signUp(email: string, password: string, profile: { first_name: string; last_name: string }): Promise<{error: string | null}>{
+            const { data, error } = await supabase.auth.signUp({ email, password, options: { data: profile } });
 
             if(error){
                 console.error("Error signing up:", error.message); //message that the email is not allowed or the password does not fit standard

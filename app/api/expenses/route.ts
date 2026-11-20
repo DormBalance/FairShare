@@ -1,3 +1,4 @@
+import { authorizeHousehold } from '@/lib/auth_helpers';
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient, SplitType } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
@@ -96,6 +97,13 @@ export async function POST(request: NextRequest) {
     const creatorUserID = BigInt(creator_user_id);
     const payerUserID = BigInt(payer_user_id);
     const householdID = BigInt(household_id);
+    const access = await authorizeHousehold(request, householdID);
+    if (access instanceof NextResponse) return access;
+    if (access.user_id !== creatorUserID) {
+      return NextResponse.json({ error: 'Creator must match the signed-in member' }, { status: 403 });
+    }
+
+
 
     let excludedUserArray;
     if(excluded_user_ids == null){
@@ -349,6 +357,9 @@ export async function GET(request: NextRequest) {
   }
 
   try{
+    const access = await authorizeHousehold(request, householdID);
+    if (access instanceof NextResponse) return access;
+
     let queryFilter: any = {
       household_id: householdID,
     };

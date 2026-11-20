@@ -1,11 +1,12 @@
 'use client';
 import { useState, useRef, useEffect } from "react";
-import { ChevronDown, Bell, Search, Home } from "lucide-react";
+import { ChevronDown, Home } from "lucide-react";
 import { useAuth } from "@/app/auth/auth";
 import { supabase } from "@/lib/supabaseClient";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-type Member = { id: string; first_name: string; last_name: string; role: string };
+type Member = { id: string; first_name: string; last_name: string; email: string; role: string };
 
 export default function Topbar(){
     const { user, session } = useAuth();
@@ -17,7 +18,8 @@ export default function Topbar(){
     const [members, setMembers] = useState<Member[]>([]);
     const [selectedMember, setSelectedMember] = useState<Member | null>(null);
     const [inviteEmail, setInviteEmail] = useState("");
-    const [inviteStatus, setInviteStatus] = useState("");
+    const [feedback, setFeedback] = useState("");
+    const [pending, setPending] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -27,7 +29,7 @@ export default function Topbar(){
                 setDropdownView("main");
                 setSelectedMember(null);
                 setInviteEmail("");
-                setInviteStatus("");
+                setFeedback("");
             }
         }
         document.addEventListener("mousedown", handleClickOutside);
@@ -53,83 +55,98 @@ export default function Topbar(){
             const memberList: Member[] = await membersRes.json();
             setMembers(memberList);
 
-            const me = memberList.find((m) => m.id === String(user?.id) || true);
-            const meByEmail = memberList.find((m: any) => m.email === user?.email);
-            if (meByEmail?.role === "Admin") setIsAdmin(true);
+            const meByEmail = memberList.find((m) => m.email === user?.email);
+            setIsAdmin(meByEmail?.role === "Admin");
         }
-        loadHousehold();
-    }, [session]);
+        void loadHousehold().catch(() => setIsAdmin(false));
+    }, [session, user?.email]);
 
-    if (!user) return null;
-
-    const firstName = user.user_metadata?.first_name ?? "";
-    const lastName = user.user_metadata?.last_name ?? "";
-    const initials = firstName && lastName ? `${firstName[0]}${lastName[0]}`.toUpperCase() : user.email[0].toUpperCase();
-    const displayName = firstName && lastName ? `${firstName} ${lastName[0]}.` : user.email;
+    const firstName = user?.user_metadata?.first_name ?? "";
+    const lastName = user?.user_metadata?.last_name ?? "";
+    const initials = firstName && lastName ? `${firstName[0]}${lastName[0]}`.toUpperCase() : (user?.email?.[0] ?? "F").toUpperCase();
+    const displayName = firstName && lastName ? `${firstName} ${lastName[0]}.` : user?.email ?? "Account";
 
     async function handleLogout() {
         await supabase.auth.signOut();
         router.push("/");
     }
 
-    async function handleInvite() {
-        if (!inviteEmail || !householdId) return;
-        setInviteStatus("Sending...");
-        const res = await fetch(`/api/households/${householdId}/send-invite`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${session?.access_token}`,
-            },
-            body: JSON.stringify({ email: inviteEmail }),
-        });
-        if (res.ok) {
-            setInviteStatus("Invite sent!");
+    async function handleInvite(event: React.FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        if (pending || !householdId) return;
+        setPending(true);
+        setFeedback("");
+
+        try {
+            const response = await fetch(`/api/households/${householdId}/send-invite`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${session?.access_token}`,
+                },
+                body: JSON.stringify({ email: inviteEmail.trim() }),
+            });
+            if (!response.ok) {
+                const data = await response.json().catch(() => null);
+                setFeedback(data?.error ?? "Couldn’t send the invitation.");
+                return;
+            }
+            setFeedback("Invitation sent.");
             setInviteEmail("");
-        } else {
-            const data = await res.json();
-            setInviteStatus(data.error ?? "Failed to send");
+        } catch {
+            setFeedback("Couldn’t connect. Please try again.");
+        } finally {
+            setPending(false);
         }
     }
 
     async function handleRemove(member: Member) {
-        const res = await fetch(`/api/households/${householdId}/members/${member.id}`, {
-            method: "DELETE",
-            headers: { "Authorization": `Bearer ${session?.access_token}` },
-        });
-        if (res.ok) {
-            setMembers((prev) => prev.filter((m) => m.id !== member.id));
+        if (pending) return;
+        setPending(true);
+        setFeedback("");
+
+        try {
+            const response = await fetch(`/api/households/${householdId}/members/${member.id}`, {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${session?.access_token}` },
+            });
+            if (!response.ok) {
+                const data = await response.json().catch(() => null);
+                setFeedback(data?.error ?? "Couldn’t remove this household member.");
+                return;
+            }
+            setMembers((previous) => previous.filter((entry) => entry.id !== member.id));
             setSelectedMember(null);
-            setDropdownView("main");
-            setDropdownOpen(false);
+            setFeedback(`${member.first_name} ${member.last_name} was removed.`);
+        } catch {
+            setFeedback("Couldn’t connect. Please try again.");
+        } finally {
+            setPending(false);
         }
     }
 
-    const otherMembers = members.filter((m: any) => m.email !== user.email);
+    const otherMembers = members.filter((m) => m.email !== user?.email);
 
     return(
         <header className = "topbar">
 
-            <div className = "topbar-left" onClick={handleLogout} style={{ cursor: "pointer" }}>
-                <Home size = {30} />
-                <span className = "fairshare-title">FairShare</span>
-            </div>
+            <Link href="/dashboard" className="brand">
+                <span className="brand-icon"><Home size={20} aria-hidden="true" /></span>
+                FairShare
+            </Link>
 
-            <div className = "topbar-right">
-                <button className = "icon-button" aria-label="Search">
-                    <Search size = {20} />
-                </button>
-
-                <button className = "icon-button" aria-label="Notifications">
-                    <Bell size = {20} />
-                </button>
-
-                <div className="topbar-profile-wrapper" ref={dropdownRef}>
-                    <div className="topbar-profile" onClick={() => { setDropdownOpen(!dropdownOpen); setDropdownView("main"); setSelectedMember(null); setInviteEmail(""); setInviteStatus(""); }} style={{ cursor: "pointer" }}>
-                        <div className = "topbar-profile-picture">{initials}</div>
+            {user && <div className="topbar-right">
+                <div className="topbar-profile-wrapper" ref={dropdownRef} onKeyDown={(event) => {
+                    if (event.key === "Escape" && !pending) {
+                        setDropdownOpen(false);
+                        dropdownRef.current?.querySelector("button")?.focus();
+                    }
+                }}>
+                    <button type="button" className="topbar-profile" aria-label="Account options" aria-expanded={dropdownOpen} disabled={pending} onClick={() => { setDropdownOpen(!dropdownOpen); setDropdownView("main"); setSelectedMember(null); setInviteEmail(""); setFeedback(""); }}>
+                        <span className="topbar-profile-picture">{initials}</span>
                         <span className = "topbar-name">{displayName}</span>
                         <ChevronDown size = {16} />
-                    </div>
+                    </button>
 
                     {dropdownOpen && (
                         <div className="topbar-dropdown">
@@ -138,10 +155,10 @@ export default function Topbar(){
                                     {isAdmin && (
                                         <>
                                             <button className="topbar-dropdown-item topbar-dropdown-item-neutral" onClick={() => setDropdownView("invite")}>
-                                                Invite
+                                                Invite a member
                                             </button>
                                             <button className="topbar-dropdown-item topbar-dropdown-item-neutral" onClick={() => setDropdownView("remove")}>
-                                                Remove
+                                                Remove a member
                                             </button>
                                         </>
                                     )}
@@ -152,50 +169,56 @@ export default function Topbar(){
                             )}
 
                             {dropdownView === "invite" && (
-                                <div style={{ padding: "8px 10px", display: "flex", flexDirection: "column", gap: 6 }}>
-                                    <button className="topbar-dropdown-back" onClick={() => { setDropdownView("main"); setInviteStatus(""); }}>← Back</button>
+                                <form className="topbar-dropdown-panel" onSubmit={handleInvite}>
+                                    <button type="button" className="topbar-dropdown-back" disabled={pending} onClick={() => { setDropdownView("main"); setFeedback(""); }}>Back</button>
                                     <input
                                         className="topbar-dropdown-input"
                                         type="email"
                                         placeholder="Email address"
                                         value={inviteEmail}
                                         onChange={(e) => setInviteEmail(e.target.value)}
-                                        onKeyDown={(e) => e.key === "Enter" && handleInvite()}
+                                        aria-label="Email address"
+                                        required
+                                        disabled={pending}
                                     />
-                                    <button className="topbar-dropdown-item topbar-dropdown-item-neutral" onClick={handleInvite}>
-                                        Send Invite
+                                    <button className="topbar-dropdown-item topbar-dropdown-item-neutral" disabled={pending}>
+                                        {pending ? "Sending…" : "Send invitation"}
                                     </button>
-                                    {inviteStatus && <span style={{ fontSize: 11, color: "#666", textAlign: "center" }}>{inviteStatus}</span>}
-                                </div>
+                                    </form>
                             )}
 
                             {dropdownView === "remove" && (
-                                <div style={{ padding: "8px 10px", display: "flex", flexDirection: "column", gap: 4 }}>
-                                    <button className="topbar-dropdown-back" onClick={() => { setDropdownView("main"); setSelectedMember(null); }}>← Back</button>
+                                <div className="topbar-dropdown-panel">
+                                    <button type="button" className="topbar-dropdown-back" disabled={pending} onClick={() => { setDropdownView("main"); setSelectedMember(null); setFeedback(""); }}>Back</button>
                                     {otherMembers.length === 0 && (
-                                        <span style={{ fontSize: 12, color: "#888", padding: "4px 0" }}>No other members</span>
+                                        <span className="topbar-feedback">No other members</span>
                                     )}
                                     {otherMembers.map((m) => (
                                         <div key={m.id}>
                                             <button
                                                 className="topbar-dropdown-item topbar-dropdown-item-neutral"
-                                                onClick={() => setSelectedMember(selectedMember?.id === m.id ? null : m)}
+                                                disabled={pending}
+                                                onClick={() => {
+                                                    setFeedback("");
+                                                    setSelectedMember(selectedMember?.id === m.id ? null : m);
+                                                }}
                                             >
                                                 {m.first_name} {m.last_name}
                                             </button>
                                             {selectedMember?.id === m.id && (
-                                                <button className="topbar-dropdown-item" onClick={() => handleRemove(m)}>
-                                                    Confirm Remove
+                                                <button className="topbar-dropdown-item" disabled={pending} onClick={() => handleRemove(m)}>
+                                                    {pending ? "Removing…" : "Confirm removal"}
                                                 </button>
                                             )}
                                         </div>
                                     ))}
                                 </div>
                             )}
+                            {feedback && <p className="topbar-feedback" role="status">{feedback}</p>}
                         </div>
                     )}
                 </div>
-            </div>
+            </div>}
         </header>
     )
 }

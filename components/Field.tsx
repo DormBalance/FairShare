@@ -1,20 +1,25 @@
-import { type ReactNode } from 'react'
-import './Field.css'
+import { useId, type ChangeEventHandler, type ReactNode } from "react";
 
-export default function IconField({ name, value, icon: svg_icon, type = 'text', placeholder = '', onChange=(val) => {} }) {
-  return (
-    <div>
-      <label>{name}</label>
-      <div className="input-box">
-        {svg_icon}
-        <input
-          value={value}
-          type={type}
-          placeholder={placeholder}
-          className="input"
-          onChange = {onChange}
-        />
-      </div>
-    </div>
-  )
+type FieldProps = {
+    name: string;
+    value: string | number;
+    icon?: ReactNode;
+    type?: string;
+    placeholder?: string;
+    onChange?: ChangeEventHandler<HTMLInputElement>;
+};
+
+export default function IconField({ name, value, icon, type = "text", placeholder = "", onChange }: FieldProps) {
+    const id = useId();
+
+    return (
+        <div>
+            <label htmlFor={id}>{name}</label>
+            <div className="input-box">
+                {icon && <span aria-hidden="true">{icon}</span>}
+                <input id={id} className="input" value={value} type={type} placeholder={placeholder}
+                    step={type === "number" ? "0.01" : undefined} onChange={onChange} />
+            </div>
+        </div>
+    );
 }

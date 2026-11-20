@@ -1,18 +1,14 @@
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
 
-//this code below was autocompleted by copilot
-type DashboardLayoutProps = {
-    children: React.ReactNode;
-}
-
-export default function DashboardLayout({ children }: DashboardLayoutProps) { 
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
     return (
         <div className="dashboard-layout">
+            <a className="skip-link" href="#main-content">Skip to content</a>
             <Topbar />
             <div className="dashboard-content">
                 <Sidebar />
-                <main className = "main-content">{children}</main>
+                <main id="main-content" className="main-content" tabIndex={-1}>{children}</main>
             </div>
         </div>
     );

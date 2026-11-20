@@ -55,16 +55,6 @@ export async function POST(request: NextRequest) {
       return h
     })
 
-    const categories = ["Groceries", "Rent", "Dining", "Utilities", "Entertainment", "Transportation", "Miscellaneous"];
-    for (const category_name of categories) {
-      await fetch(`${request.nextUrl.origin}/api/expense_category`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ household_id: household.id.toString(), category_name }),
-      })
-    }
-
-
     return NextResponse.json(JSONifyBigInt(household), { status: 201 })
   } catch (err) {
     console.error('Error creating household:', err)
@@ -87,6 +77,7 @@ export async function GET(request: NextRequest) {
     const memberships = await prisma.household_members.findMany({
       where:   { user_id: dbUser.id },
       include: { household: true },
+      orderBy: { household_id: 'asc' },
     })
 
     const households = memberships.map((m) => ({

@@ -249,3 +249,11 @@ See [`CONTRIBUTING.md`](./CONTRIBUTTING.md) for the full branching and PR guide.
 ---
 
 *FairShare — because roommates shouldn't have to argue over Venmo screenshots.*
+
+### Email invites and recurring processing
+
+Set `RESEND_API_KEY` on the server to enable email invites. The configured sender domain must be verified in Resend. The legacy `RESEBD_API_KEY` name is also accepted.
+
+To generate due recurring expenses automatically, configure a scheduler to send `POST /api/recurring_expenses/run-due` with an `Authorization: Bearer <CRON_SECRET>` header. Set the matching `CRON_SECRET` in the application's server environment.
+
+For the split calculation tests, run `npm exec -- tsx --test utilities/expenseSplit.test.ts`.

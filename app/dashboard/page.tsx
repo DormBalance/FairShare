@@ -1,170 +1,114 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useAuth } from "@/app/auth/auth";
+import { useCallback, useEffect, useState } from "react";
+import { Plus } from "lucide-react";
+import Link from "next/link";
 import DashboardLayout from "@/components/DashboardLayout";
+import HouseholdState from "@/components/HouseholdState";
 import StatCard from "@/components/StatCard";
+import SpendingChart from "@/components/SpendingChart";
 import RecentExpensesCard from "@/components/RecentExpensesCard";
-import { getExpenses } from "@/lib/api";
-import { GetExpenseResponse } from "@/types";
-import "./dashboard.css";
 import CreateExpenseModal from "@/components/CreateExpenseModal";
-
-
-
-function formatDate(dateString: string): string{
-    return new Date(dateString).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-    });
-}
-
-function formatCurrency(amount: number): string{
-    return new Intl.NumberFormat("en-US", {
-        style: "currency",
-        currency: "USD",
-    }).format(amount);
-}
-
-function computeBalances(expenses: GetExpenseResponse[], currentUser: string ){
-    let amountOwed = 0;
-    let amountYouOwe = 0;
-
-    for(let expense of expenses){
-        let payer = expense.payer_user_id == currentUser;
-        if(payer){
-            let owed = expense.splits.filter((s) => s.user_id !== currentUser && !s.opted_out).reduce((sum,s) => sum + Number(s.amount_to_pay), 0); //line generated with copilot
-            amountOwed += owed;
-        } else{
-            let userSplit = expense.splits.find((s) => s.user_id === currentUser);
-            if(userSplit && !userSplit.opted_out){
-                amountYouOwe += Number(userSplit.amount_to_pay);
-            }
-        }
-    }
-    return { amountOwed, amountYouOwe };
-}
-
-function generateStatusText(expense: GetExpenseResponse, currentUser: string): string{
-    let payer = expense.payer_user_id === currentUser;
-    if(payer){
-        let amountOwed = expense.splits.filter((s) => s.user_id !== currentUser && !s.opted_out).reduce((sum,s) => sum + Number(s.amount_to_pay), 0); //line generated with copilot
-        if(amountOwed === 0){
-            return "Settled Up";
-        }
-        return `You are owed ${formatCurrency(amountOwed)}`;
-        }
-        let userSplit = expense.splits.find((s) => s.user_id === currentUser);
-        if(!userSplit || userSplit.opted_out){
-            return "Settled Up";
-        }
-
-        let amountOwed = Number(userSplit.amount_to_pay);
-        if(amountOwed === 0){
-            return "Settled Up";
-        }
-        return `You owe ${formatCurrency(amountOwed)}`;
-}
+import { getBalances, getExpenses } from "@/lib/api";
+import { formatCurrency, formatDate, toCents } from "@/lib/format";
+import { useHousehold } from "@/lib/useHousehold";
+import type { BalanceEntry, GetExpenseResponse } from "@/types";
 
 export default function DashboardPage() {
-    const { session, user } = useAuth();
+    const context = useHousehold();
+    const householdId = context.status === "ready" ? context.household.id : "";
+    const memberId = context.status === "ready" ? context.member.id : "";
+    const [expenses, setExpenses] = useState<GetExpenseResponse[]>([]);
+    const [balances, setBalances] = useState<BalanceEntry[]>([]);
+    const [balanceReady, setBalanceReady] = useState(false);
+    const [expensesReady, setExpensesReady] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
+    const [showCreateModal, setShowCreateModal] = useState(false);
 
-    const [householdID, setHouseholdID] = useState("");
-    const [householdName, setHouseholdName] = useState("");
-    const [currUser, setCurrUser] = useState("");
-    let [expenses, setExpenses] = useState<GetExpenseResponse[]>([]);
-    let [loading, setLoading] = useState(true);
-    let [error, setError] = useState("");
-    let [showCreateModal, setShowCreateModal] = useState(false);
-
-    useEffect(() => {
-        if (!session?.access_token) return;
-
-        async function loadHousehold() {
-            const res = await fetch("/api/households", {
-                headers: { "Authorization": `Bearer ${session.access_token}` },
-            });
-            if (!res.ok) return;
-            const data = await res.json();
-            if (data.length === 0) return;
-
-            const household = data[0];
-            setHouseholdID(String(household.id));
-            setHouseholdName(household.name);
-
-            const membersRes = await fetch(`/api/households/${household.id}/members`, {
-                headers: { "Authorization": `Bearer ${session.access_token}` },
-            });
-            if (!membersRes.ok) return;
-            const members = await membersRes.json();
-            const me = members.find((m: any) => m.email === user?.email);
-            if (me) setCurrUser(String(me.id));
-        }
-
-        loadHousehold();
-    }, [session]);
-
-    async function loadExpenses(){
-        if (!householdID) return;
+    const loadDashboard = useCallback(async (signal?: AbortSignal) => {
+        if (!householdId) return;
         setLoading(true);
         setError("");
 
-        let result = await getExpenses(householdID);
-        if(result.success === false){
-            setError(result.error);
-            setLoading(false);
-            return;
-        }
+        const [expenseResult, balanceResult] = await Promise.all([
+            getExpenses(householdId), getBalances(householdId),
+        ]);
+        if (signal?.aborted) return;
 
-        setExpenses(result.data);
+        setExpensesReady(expenseResult.success);
+        setBalanceReady(balanceResult.success);
+        if (expenseResult.success) setExpenses(expenseResult.data);
+        if (balanceResult.success) setBalances(balanceResult.data);
+        if (!expenseResult.success || !balanceResult.success) {
+            setError("Some dashboard information couldn’t be loaded.");
+        }
         setLoading(false);
-    }
+    }, [householdId]);
 
     useEffect(() => {
-        loadExpenses();
-    }, [householdID]);
+        const controller = new AbortController();
+        void loadDashboard(controller.signal);
+        return () => controller.abort();
+    }, [loadDashboard]);
 
-    let {amountOwed, amountYouOwe} = computeBalances(expenses, currUser);
-    let balance = amountOwed - amountYouOwe;
+    const owe = balances.reduce((total, entry) => total + (entry.from === memberId ? toCents(entry.amount) : 0), 0);
+    const owed = balances.reduce((total, entry) => total + (entry.to === memberId ? toCents(entry.amount) : 0), 0);
+    const balance = owed - owe;
+    const balanceValue = (cents: number) => balanceReady ? formatCurrency(cents / 100) : "—";
 
-    let expenseRows = expenses.map((expense) =>({
-        id: Number(expense.id),
+    const expenseRows = expenses.map((expense) => ({
+        id: expense.id,
         description: expense.expense_name,
-        paidBy: `${expense.expense_payer.first_name} ${expense.expense_payer.last_name}`,
+        paidBy: expense.expense_payer ? `${expense.expense_payer.first_name} ${expense.expense_payer.last_name}` : "Former member",
         date: formatDate(expense.expense_date),
         total: formatCurrency(Number(expense.amount)),
-        status:generateStatusText(expense,currUser),
-    }))
+    }));
 
-    return(
+    return (
         <DashboardLayout>
-            {error && <p style = {{color: "red", marginBottom: 16}}>{error}</p>}
-            {loading && <p style = {{color: "#888", marginBottom: 16}}>Loading...</p>}
-
-            <div className = "page-header">
-                <h1 className = "page-title">{householdName}</h1>
-                <div className = "page-features">
-                    <button className = "add-expense-btn" onClick={() => setShowCreateModal(true)}>Add Expense</button>
-                    <button className = "settle-up-btn">Settle Up</button>
+            <header className="page-header">
+                <div>
+                    <h1 className="page-title">Overview</h1>
+                    {context.status === "ready" && <p>{context.household.name}</p>}
                 </div>
-            </div>
-            <div className = "stat-cards-row">
-                <StatCard label = "You Owe" value = {amountYouOwe > 0 ? `-${formatCurrency(amountYouOwe)}` : formatCurrency(0)} />
-                <StatCard label = "You're Owed" value = {formatCurrency(amountOwed)} />
-                <StatCard label = "Balance" value = {balance >= 0 ? `+${formatCurrency(balance)}` : `-${formatCurrency(Math.abs(balance))}`} 
-                    valueClassName={balance >= 0 ? "positive" : "negative"}/>
-            </div>
-
-            <RecentExpensesCard rows = {expenseRows} />
-
-            <CreateExpenseModal
-                isOpen         = {showCreateModal}
-                onClose        = {() => setShowCreateModal(false)}
-                onSuccess      = {loadExpenses}
-                curUserID      = {currUser}
-                curHouseholdID = {householdID}
-            />
+                {context.status === "ready" && (
+                    <div className="page-features">
+                        <Link className="settle-up-btn" href="/settlements">Settle up</Link>
+                        <button className="add-expense-btn" onClick={() => setShowCreateModal(true)}>
+                            <Plus size={18} aria-hidden="true" /> Add expense
+                        </button>
+                    </div>
+                )}
+            </header>
+            {context.status !== "ready" ? <HouseholdState status={context.status} /> : (
+                <>
+                    {error && <div className="page-alert" role="alert">
+                        {error} <button onClick={() => void loadDashboard()}>Try again</button>
+                    </div>}
+                    {loading && !expensesReady && !balanceReady ? (
+                        <div className="page-skeleton" role="status">Loading financial overview…</div>
+                    ) : (
+                        <>
+                            <div className="stat-cards-row">
+                                <StatCard label="Net balance" value={balanceValue(balance)} />
+                                <StatCard label="You owe" value={balanceValue(owe)} variant="pay" />
+                                <StatCard label="You’re owed" value={balanceValue(owed)} variant="receive" />
+                            </div>
+                            {expensesReady && (
+                                <div className="overview-grid">
+                                    <RecentExpensesCard rows={expenseRows} showStatus={false} />
+                                    <SpendingChart expenses={expenses} />
+                                </div>
+                            )}
+                        </>
+                    )}
+                    {showCreateModal && (
+                        <CreateExpenseModal isOpen onClose={() => setShowCreateModal(false)}
+                            onSuccess={() => void loadDashboard()} curUserID={memberId} curHouseholdID={householdId} />
+                    )}
+                </>
+            )}
         </DashboardLayout>
     );
 }

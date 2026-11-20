@@ -1,54 +1,36 @@
-import "./SelectMembers.css";
+import type { HouseholdMember } from "@/types";
 
-type Member = {
-  id: string;
-  first_name: string;
-  last_name: string;
+type SelectedMembersProps = {
+    members: HouseholdMember[];
+    participants: { user_id: string; percent: number }[];
+    showAmounts: boolean;
+    onToggle: (userId: string) => void;
+    onAmountChange: (userId: string, percent: number) => void;
 };
 
-interface SelectedMembers {
-  members: Member[];
-  selectedIds: string[];
-  showAmounts: boolean;
-  onToggleCheck: (selectedIds: string[]) => void;
-  onAmountChange: (userId: string, amount: number) => void;
-}
+export default function SelectMembers({ members, participants, showAmounts, onToggle, onAmountChange }: SelectedMembersProps) {
+    return (
+        <fieldset className="member-selection">
+            <legend>Split between</legend>
+            {members.map((member) => {
+                const name = `${member.first_name} ${member.last_name}`;
+                const participant = participants.find(({ user_id }) => user_id === member.id);
 
-export default function SelectMembers({ members, selectedIds: selectedUserIds, showAmounts, onToggleCheck, onAmountChange }: SelectedMembers) {
-  return (
-    <div className = "member-selection">
-      <span className = "participation-param">
-        { members.map((member) => (
-          <div key={member.id}>
-            <label>
-              <input
-                type      = "checkbox"
-                checked   = {selectedUserIds.includes(member.id)}
-                onChange  = {() => {
-                  if (selectedUserIds.includes(member.id))
-                    onToggleCheck(selectedUserIds.filter((id) => id !== member.id));
-                  else
-                    onToggleCheck(Array.from(selectedUserIds).concat(member.id));
-                }}
-              />
-              {member.first_name} {member.last_name}
-            </label>
-            <div className = "amounts" style = {{ visibility: showAmounts ? "visible" : "hidden" }}>
-              <input
-                type          = "number"
-                min           = {0}
-                max           = {100000}
-                defaultValue  = {0}
-                disabled      = {!UserInMember(selectedUserIds, member)}
-                onChange      = {(changeAmount) => onAmountChange(member.id, Number(changeAmount.target.value))}
-              />%
-            </div>
-          </div>
-        ))}
-      </span>
-    </div>
-  );
-}
-function UserInMember(selectedUserIds: string[], member: Member) {
-  return selectedUserIds.includes(member.id);
+                return (
+                    <div key={member.id} className="member-option">
+                        <label>
+                            <input type="checkbox" checked={Boolean(participant)} onChange={() => onToggle(member.id)} />
+                            {name}
+                        </label>
+                        {showAmounts && <div className="member-share">
+                            <input className="input" type="number" min="0" max="100" step="any" aria-label={`${name} percentage`}
+                                value={participant?.percent ?? ""} disabled={!participant}
+                                onChange={(event) => onAmountChange(member.id, Number(event.target.value))} />
+                            <span aria-hidden="true">%</span>
+                        </div>}
+                    </div>
+                );
+            })}
+        </fieldset>
+    );
 }

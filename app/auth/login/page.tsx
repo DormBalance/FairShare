@@ -3,18 +3,19 @@ import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/app/auth/auth";
 import { supabase } from "@/lib/supabaseClient";
-import "./login.css";
+import { Home } from "lucide-react";
+import Link from "next/link";
 
 async function getHouseholds(token: string) {
     const res = await fetch("/api/households", {
         headers: { "Authorization": `Bearer ${token}` },
     });
-    if (!res.ok) return [];
+    if (!res.ok) throw new Error("Couldn’t load your households. Please try again.");
     return await res.json();
 }
 
 async function createProfile(token: string, firstName: string, lastName: string) {
-    await fetch("/api/auth/profile", {
+    const response = await fetch("/api/auth/profile", {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
@@ -22,6 +23,7 @@ async function createProfile(token: string, firstName: string, lastName: string)
         },
         body: JSON.stringify({ first_name: firstName, last_name: lastName }),
     });
+    if (!response.ok) throw new Error("Couldn’t save your profile. Please try again.");
 }
 
 function LoginForm() {
@@ -35,69 +37,76 @@ function LoginForm() {
     const [firstName, setFirstName] = useState("");
     const [lastName, setLastName] = useState("");
     const [error, setError] = useState("");
+    const [notice, setNotice] = useState("");
     const [loading, setLoading] = useState(false);
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
-        setError("");
-        setLoading(true);
-
-        await supabase.auth.signOut();
-
-        const result = isSignUp
-            ? await signUp(email, password)
-            : await signIn(email, password);
-
-        if (result.error) {
-            setError(result.error);
-            setLoading(false);
+        if (loading) return;
+        if (isSignUp && (!firstName.trim() || !lastName.trim())) {
+            setError("Enter your first and last name.");
             return;
         }
+        setError("");
+        setNotice("");
+        setLoading(true);
 
-        const { data: { session: freshSession } } = await supabase.auth.getSession();
-        const token = freshSession?.access_token ?? "";
+        try {
+            const result = isSignUp
+                ? await signUp(email, password, { first_name: firstName.trim(), last_name: lastName.trim() })
+                : await signIn(email, password);
+            if (result.error) {
+                setError(result.error);
+                return;
+            }
 
-        if (isSignUp) {
-            await createProfile(token, firstName, lastName);
-            await supabase.auth.updateUser({ data: { first_name: firstName, last_name: lastName } });
-        } else {
-            const { data: { user } } = await supabase.auth.getUser();
-            const fn = user?.user_metadata?.first_name ?? "";
-            const ln = user?.user_metadata?.last_name ?? "";
-            if (fn && ln) await createProfile(token, fn, ln);
-        }
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) {
+                if (!isSignUp) throw new Error("Couldn’t start your session. Please try again.");
+                setIsSignUp(false);
+                setPassword("");
+                setNotice("Check your email to confirm your account, then sign in.");
+                return;
+            }
 
-        const households = await getHouseholds(token);
+            const metadata = session.user.user_metadata;
+            if (metadata.first_name && metadata.last_name) {
+                await createProfile(session.access_token, metadata.first_name, metadata.last_name);
+            }
 
-        if (households.length === 0) {
-            router.push("/households");
-        } else {
-            router.push("/dashboard");
+            const households = await getHouseholds(session.access_token);
+            router.replace(households.length ? "/dashboard" : "/households");
+        } catch (error) {
+            setError(error instanceof Error ? error.message : "Something went wrong. Please try again.");
+        } finally {
+            setLoading(false);
         }
     }
 
     function switchMode() {
         setIsSignUp(!isSignUp);
         setError("");
+        setNotice("");
         setFirstName("");
         setLastName("");
     }
 
     return (
-        <div className="login-page">
-            <div className="login-card">
-                <div className="login-header">
-                    <h1 className="login-title">FairShare</h1>
-                    <p className="login-subtitle">{isSignUp ? "Create your account" : "Sign in to your account"}</p>
+        <main className="account-page">
+            <div className="account-card hover-lift">
+                <div className="account-header">
+                    <Link href="/" className="brand" aria-label="FairShare home"><span className="brand-icon"><Home size={20} aria-hidden="true" /></span></Link>
+                    <h1>{isSignUp ? "Create your account" : "Welcome back"}</h1>
+                    <p>{isSignUp ? "Start tracking shared expenses with your roommates." : "Sign in to your FairShare account."}</p>
                 </div>
 
-                <form onSubmit={handleSubmit} className="login-form">
+                <form onSubmit={handleSubmit} className="account-form">
                     {isSignUp && (
-                        <div className="login-name-row">
-                            <div className="login-field">
-                                <label className="login-label">First Name</label>
-                                <input
-                                    className="login-input"
+                        <div className="account-name-row">
+                            <div className="account-field">
+                                <label htmlFor="first-name">First Name</label>
+                                <input id="first-name" autoComplete="given-name"
+
                                     type="text"
                                     value={firstName}
                                     onChange={(e) => setFirstName(e.target.value)}
@@ -105,10 +114,10 @@ function LoginForm() {
                                     required
                                 />
                             </div>
-                            <div className="login-field">
-                                <label className="login-label">Last Name</label>
-                                <input
-                                    className="login-input"
+                            <div className="account-field">
+                                <label htmlFor="last-name">Last Name</label>
+                                <input id="last-name" autoComplete="family-name"
+
                                     type="text"
                                     value={lastName}
                                     onChange={(e) => setLastName(e.target.value)}
@@ -119,10 +128,10 @@ function LoginForm() {
                         </div>
                     )}
 
-                    <div className="login-field">
-                        <label className="login-label">Email</label>
-                        <input
-                            className="login-input"
+                    <div className="account-field">
+                        <label htmlFor="email">Email</label>
+                        <input id="email" autoComplete="email"
+
                             type="email"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
@@ -131,10 +140,10 @@ function LoginForm() {
                         />
                     </div>
 
-                    <div className="login-field">
-                        <label className="login-label">Password</label>
-                        <input
-                            className="login-input"
+                    <div className="account-field">
+                        <label htmlFor="password">Password</label>
+                        <input id="password" autoComplete={isSignUp ? "new-password" : "current-password"}
+
                             type="password"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
@@ -143,21 +152,22 @@ function LoginForm() {
                         />
                     </div>
 
-                    {error && <p className="login-error">{error}</p>}
+                    {error && <p className="page-alert" role="alert">{error}</p>}
+                    {notice && <p className="account-notice" role="status">{notice}</p>}
 
-                    <button className="login-btn" type="submit" disabled={loading}>
+                    <button className="add-expense-btn account-submit" type="submit" disabled={loading}>
                         {loading ? "Please wait..." : isSignUp ? "Create Account" : "Sign In"}
                     </button>
                 </form>
 
-                <p className="login-toggle">
+                <p className="account-toggle">
                     {isSignUp ? "Already have an account?" : "Don't have an account?"}
-                    <button className="login-toggle-btn" onClick={switchMode}>
+                    <button onClick={switchMode}>
                         {isSignUp ? "Sign in" : "Sign up"}
                     </button>
                 </p>
             </div>
-        </div>
+        </main>
     );
 }
 

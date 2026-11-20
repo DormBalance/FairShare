@@ -1,228 +1,129 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useAuth } from "@/app/auth/auth";
+import { useCallback, useEffect, useState } from "react";
+import { Plus } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import HouseholdState from "@/components/HouseholdState";
 import StatCard from "@/components/StatCard";
-import "../dashboard/dashboard.css";
+import CreateSettlementModal from "@/components/CreateSettlementModal";
+import { getBalances, getSettlements } from "@/lib/api";
+import { formatCurrency, formatDate, toCents } from "@/lib/format";
+import { useHousehold } from "@/lib/useHousehold";
+import type { BalanceEntry, GetSettlementResponse } from "@/types";
 import "./settlements.css";
-import { GetSettlementResponse } from "@/types";
-import { getSettlements } from "@/lib/api";
-import CreateSettlementModal from "@/components/CreateSettlementModal"; // Copilot generated per Settle-Up button onClick
-
-
-function formatDate(dateString: string): string{
-    return new Date(dateString).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-    });
-}
-
-function formatCurrency(amount: number): string{
-    return new Intl.NumberFormat("en-US", {
-        style: "currency",
-        currency: "USD",
-    }).format(amount);
-}
-
-type Balance = {
-    from: string;
-    to: string;
-    amount: string;
-};
-
 
 export default function SettlementsPage() {
-        const { session, user } = useAuth();
-        let [householdID, setHouseholdID] = useState<string>("");
-        let [currUser, setCurrUser] = useState<string>("");
-        let [balances, setBalance] = useState<Balance[]>([]);
-        let [settlements, setSettlements] = useState<GetSettlementResponse[]>([]);
-        let [loading, setLoading] = useState<boolean>(true);
-        let [error, setError] = useState<string>("");
-        let [showSettleModal, setShowSettleModal] = useState<boolean>(false); // Copilot generated per Settle-Up button onClick
+    const context = useHousehold();
+    const householdId = context.status === "ready" ? context.household.id : "";
+    const memberId = context.status === "ready" ? context.member.id : "";
+    const [balances, setBalances] = useState<BalanceEntry[]>([]);
+    const [settlements, setSettlements] = useState<GetSettlementResponse[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
+    const [showModal, setShowModal] = useState(false);
 
-        // Copied from dashboard/page.tsx pattern — fetches household and DB user ID via API
-        useEffect(() => {
-            if (!session?.access_token) return;
-            async function loadHousehold() {
-                const res = await fetch("/api/households", {
-                    headers: { "Authorization": `Bearer ${session.access_token}` },
-                });
-                if (!res.ok) return;
-                const data = await res.json();
-                if (data.length === 0) return;
-                const household = data[0];
-                setHouseholdID(String(household.id));
-                const membersRes = await fetch(`/api/households/${household.id}/members`, {
-                    headers: { "Authorization": `Bearer ${session.access_token}` },
-                });
-                if (!membersRes.ok) return;
-                const members = await membersRes.json();
-                const me = members.find((m: any) => m.email === user?.email);
-                if (me) setCurrUser(String(me.id));
-            }
-            loadHousehold();
-        }, [session]);
-
-        async function loadExpenses(){
-            if (!householdID) return;
-            setLoading(true);
-            setError("");
-            let balances = await fetch(`/api/balances?household_id=${householdID}`);
-
-            let balancesInfo = await balances.json();
-            setBalance(balancesInfo.balances);
-            setLoading(false);
-
-            let settlementsResult = await getSettlements(householdID);
-
-            if (settlementsResult.success === false) {
-                setError("Failed to load settlement history");
-                setLoading(false);
-                return;
-            }
-
-            setSettlements(settlementsResult.data);
-            setLoading(false);
+    const refresh = useCallback(async (signal?: AbortSignal) => {
+        if (!householdId) return;
+        setLoading(true);
+        setError("");
+        const [balanceResult, historyResult] = await Promise.all([
+            getBalances(householdId), getSettlements(householdId),
+        ]);
+        if (signal?.aborted) return;
+        if (balanceResult.success && historyResult.success) {
+            setBalances(balanceResult.data);
+            setSettlements(historyResult.data);
+        } else {
+            setError("We couldn’t load settlements and balances.");
         }
-        useEffect(() => {
-            loadExpenses();
-        }, [householdID]);
+        setLoading(false);
+    }, [householdId]);
 
-        let whoYouOwe = balances.filter((balance) => balance.from === currUser);
-        let whoOwesYou = balances.filter((balance) => balance.to === currUser);
-        let totalOwed = whoYouOwe.reduce((totalSum, balance) => totalSum + Number(balance.amount), 0);
-        let totalYouAreOwed = whoOwesYou.reduce((totalSum, balance) => totalSum + Number(balance.amount), 0);
-        let finalBalance = totalOwed - totalYouAreOwed;
+    useEffect(() => {
+        const controller = new AbortController();
+        void refresh(controller.signal);
+        return () => controller.abort();
+    }, [refresh]);
 
-    return(
+    const outgoing = balances.filter((balance) => balance.from === memberId);
+    const incoming = balances.filter((balance) => balance.to === memberId);
+    const totalOwe = outgoing.reduce((sum, item) => sum + toCents(item.amount), 0);
+    const totalOwed = incoming.reduce((sum, item) => sum + toCents(item.amount), 0);
+    const names = new Map(context.status === "ready" ? context.members.map((member) =>
+        [member.id, `${member.first_name} ${member.last_name}`]) : []);
+    const balanceGroups = [
+        { title: "Who you owe", entries: outgoing, peer: "to" as const, tone: "status-owe" },
+        { title: "Who owes you", entries: incoming, peer: "from" as const, tone: "status-owed" },
+    ];
+
+    return (
         <DashboardLayout>
-            <div>
-                <div className = "settlement-page-header">
-                    <h1 className = "settlement-page-title">Settlements</h1>
-                    <button className = "settle-btn" onClick={() => setShowSettleModal(true)}>Settle-Up</button> {/* Copilot generated per Settle-Up button onClick */}
+            <header className="page-header">
+                <div>
+                    <h1 className="page-title">Settlements</h1>
+                    <p>Track outstanding balances and payments.</p>
                 </div>
-            </div>
-            {error && <p style = {{color: "red", marginBottom: 16}}>{error}</p>}
-            {loading && <p style = {{color: "#888", marginBottom: 16}}>Loading...</p>}
-
-            <div className = "stat-cards-row">
-                <StatCard
-                    label="Total Owed"
-                    value={formatCurrency(totalOwed)}
-                />
-                <StatCard
-                    label="Total You're Owed"
-                    value={formatCurrency(totalYouAreOwed)}
-                />
-                <StatCard
-                label = "Balance" 
-                value = {finalBalance >= 0 ? `+${formatCurrency(finalBalance)}` : `-${formatCurrency(Math.abs(finalBalance))}`} 
-                valueClassName={finalBalance >= 0 ? "positive" : "negative"}/>
-            </div>
-
-            <div className = "settlement-info-cols">
-
-            <div className = "settlement-info-row">
-                <div className = "settlement-cards">
-                    <h2 className = "settlement-cards-titles">Who You Owe</h2>
-                    <div className = "settlements-info-table">
-                        <div className = "settlements-info-table-header">
-                            <span>From</span>
-                            <span>Amount</span>
-                        </div>
-                        {whoYouOwe.length === 0 ? (
-                    <div className = "settlements-empty">You do not owe anybody</div>
-                ): (
-                    whoYouOwe.map((balance) => (
-                        <div className = "settlements-info-row" key={balance.to}>
-                            <span className = "settlement-member">
-                                <div className = "member">{balance.to.charAt(0).toUpperCase()}</div>
-                                    {balance.to}
-                            </span>
-                            <span className = "amount-owe">{formatCurrency(Number(balance.amount))}</span>
-                        </div>
-                        ))
+                {context.status === "ready" && <button className="add-expense-btn" onClick={() => setShowModal(true)}>
+                    <Plus size={18} aria-hidden="true" /> Record payment
+                </button>}
+            </header>
+            {context.status !== "ready" ? <HouseholdState status={context.status} /> : (
+                <>
+                    {loading ? <div className="page-skeleton" role="status">Loading settlements…</div> : error ? (
+                        <div className="page-alert" role="alert">{error} <button onClick={() => void refresh()}>Try again</button></div>
+                    ) : (
+                        <>
+                            <div className="stat-cards-row">
+                                <StatCard label="Net balance" value={formatCurrency((totalOwed - totalOwe) / 100)} />
+                                <StatCard label="You owe" value={formatCurrency(totalOwe / 100)} variant="pay" />
+                                <StatCard label="You’re owed" value={formatCurrency(totalOwed / 100)} variant="receive" />
+                            </div>
+                            <div className="settlement-info-cols">
+                                {balanceGroups.map(({ title, entries, peer, tone }) => (
+                                    <section className="settlement-cards hover-lift" key={title}>
+                                        <h2>{title}</h2>
+                                        {entries.length === 0 ? <p>No outstanding balances.</p> : (
+                                            <ul>
+                                                {entries.map((entry) => (
+                                                    <li key={entry[peer]}>
+                                                        <span>{names.get(entry[peer]) ?? "Former member"}</span>
+                                                        <strong className={tone}>{formatCurrency(Number(entry.amount))}</strong>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        )}
+                                    </section>
+                                ))}
+                            </div>
+                            <section className="settlement-history-card hover-lift">
+                                <div className="recent-expenses-header"><h2 className="recent-expenses-title">Payment history</h2></div>
+                                {settlements.length === 0 ? <div className="empty-state"><p>No payments recorded.</p></div> : (
+                                    <div className="table-scroll" role="region" aria-label="Payment history" tabIndex={0}>
+                                        <table className="activity-table">
+                                            <thead><tr>
+                                                <th scope="col">Date</th><th scope="col">Paid by</th><th scope="col">Paid to</th>
+                                                <th scope="col">Amount</th><th scope="col">Method</th>
+                                            </tr></thead>
+                                            <tbody>{settlements.map((payment) => (
+                                                <tr key={payment.id}>
+                                                    <td>{formatDate(payment.payment_date)}</td>
+                                                    <td>{payment.settlement_payer.first_name} {payment.settlement_payer.last_name}</td>
+                                                    <td>{payment.settlement_recipient.first_name} {payment.settlement_recipient.last_name}</td>
+                                                    <td className="table-amount">{formatCurrency(Number(payment.amount))}</td>
+                                                    <td>{payment.payment_method}</td>
+                                                </tr>
+                                            ))}</tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </section>
+                        </>
                     )}
-                    </div>
-                </div>
-            </div>
-
-              <div className = "settlement-info-row">
-                <div className = "settlement-cards">
-                    <h2 className = "settlement-cards-titles">Who Owes You</h2>
-                    <div className = "settlements-info-table">
-                        <div className = "settlements-info-table-header">
-                            <span>From</span>
-                            <span>Amount</span>
-                        </div>
-                        {whoOwesYou.length === 0 ? (
-                    <div className = "settlements-empty">You do not owe anybody</div>
-                ): (
-                    whoOwesYou.map((balance) => (
-                        <div className = "settlements-info-row" key={balance.to}>
-                            <span className = "settlement-member">
-                                <div className = "member">{balance.to.charAt(0).toUpperCase()}</div>
-                                    {balance.to}
-                            </span>
-                            <span className = "amount-owed">You're Owed {formatCurrency(Number(balance.amount))}</span>
-                        </div>
-                        ))
-                    )}
-                    </div>
-                </div>
-            </div>
-            </div>
-
-            <div className = "settlement-history-card">
-                <div className = "settlement-history-header">
-                    <h2 className = "settlements-cards-titles">Settlement History</h2>
-                    <button className="view-all-btn">View All</button>
-                </div>
-                <div className = "settlement-history-table-header">
-                    <span>Date</span>
-                    <span>From</span>
-                    <span>To</span>
-                    <span>Amount</span>
-                    <span>Method</span>
-                    <span>Status</span>
-                </div>
-                {settlements.length === 0 ? (
-                    <div className="settlements-empty">No settlements yet</div>
-                ) : (
-                    settlements.map((settlement) => (
-                        <div className="settlement-history-row" key={settlement.id}>
-                            <span>{formatDate(settlement.payment_date)}</span>
-                            <span className="settlement-member">
-                                <div className="member">
-                                    {settlement.settlement_payer.first_name.charAt(0).toUpperCase()}
-                                </div>
-                                {settlement.settlement_payer.first_name} {settlement.settlement_payer.last_name}
-                            </span>
-
-                            <span className="settlement-member">
-                                <div className="member">
-                                    {settlement.settlement_recipient.first_name.charAt(0).toUpperCase()}
-                                </div>
-                                {settlement.settlement_recipient.first_name} {settlement.settlement_recipient.last_name}
-                            </span>
-
-                            <span>{formatCurrency(Number(settlement.amount))}</span>
-                            <span>{settlement.payment_method}</span>
-                            <span className="status-completed">Completed</span>
-                        </div>
-                    ))
-                )}
-            </div>
-            <CreateSettlementModal
-                isOpen         = {showSettleModal}
-                onClose        = {() => setShowSettleModal(false)}
-                onSuccess      = {() => { setShowSettleModal(false); loadExpenses(); }}
-                curUserID      = {currUser}
-                curHouseholdID = {householdID}
-            />
+                    <CreateSettlementModal isOpen={showModal} onClose={() => setShowModal(false)}
+                        onSuccess={() => void refresh()} curUserID={memberId} curHouseholdID={householdId}
+                        householdMembers={context.members} />
+                </>
+            )}
         </DashboardLayout>
     );
 }

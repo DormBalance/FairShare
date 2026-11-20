@@ -169,8 +169,8 @@ export async function getHouseholdMembers(userID: string): Promise<Result<Househ
 
 export async function getRecurringExpenses(householdId: string): Promise<Result<GetRecurringExpenseResponse[]>> {
   let url = `/api/recurring_expenses?household_id=${encodeURIComponent(householdId)}`;
-  let response = await fetch(url);
   try {
+    const response = await fetch(url);
     if (!response.ok) {
       let error = await response.json();
       return failResponse(error.error);
@@ -184,9 +184,8 @@ export async function getRecurringExpenses(householdId: string): Promise<Result<
 }
 
 export async function runDueRecurringExpenses(): Promise<Result<RunDueResponse>> {
-  let response = await fetch('/api/recurring_expenses/run_due', { method: 'POST' });
-  
   try {
+    const response = await fetch('/api/recurring_expenses/run-due', { method: 'POST' });
     if (!response.ok) {
       let error = await response.json();
       return failResponse(error.error);

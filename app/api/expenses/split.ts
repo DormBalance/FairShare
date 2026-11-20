@@ -34,7 +34,7 @@ export function CalculateEqualSplit(input: EqualSplitInputType): ComputedRowData
         throw new Error("Equal split does not have any users participating");
     }
 
-    if (!Number.isFinite(Amount) || Amount <= 0){
+    if (!Number.isSafeInteger(Math.round(Amount * 100)) || Amount < 0.01){
         throw new Error("Equal split does not have both a finite or positive number");
     }
 
@@ -106,7 +106,7 @@ export function CalculatePercentSplit(input: PercentSplitInputType): ComputedRow
         repeatedUsers.add(userIDString);
     }
 
-    if (!Number.isFinite(Amount) || Amount <= 0){
+    if (!Number.isSafeInteger(Math.round(Amount * 100)) || Amount < 0.01){
         throw new Error("Percent split does not have both a finite or positive number");
     }
 
@@ -133,26 +133,19 @@ export function CalculatePercentSplit(input: PercentSplitInputType): ComputedRow
         throw new Error("Percents are invalid and do not sum up to 100");
     }
 
-    //cents logic
     const totalCents = Math.round(Amount * 100);
-    const centsPerUser: number[] = [];
-    let centsUsed = 0;
-    
-    for(let i = 0; i < PayingUsers.length; i++){
-        const centsToPay = (totalCents * PayingUsers[i].Percent) / 100; //these lines are the only real logic difference.
-        const cents = Math.floor(centsToPay);
-        centsPerUser.push(cents);
-        centsUsed += cents;
-        }   
+    const shares = PayingUsers.map(({ Percent }, index) => {
+        const exact = (totalCents * Percent) / sumOfPercents;
+        const cents = Math.floor(exact);
+        return { index, cents, remainder: exact - cents };
+    });
 
-    let remainder = totalCents - centsUsed;
-    for(let i = 0; remainder > 0; i++){
-        centsPerUser[i] += 1;
-        remainder -= 1;
-
-        if(i === centsPerUser.length - 1){
-            i = -1;
-        }
+    // Award leftover cents to the largest fractional shares, preserving order on ties.
+    const centsPerUser = shares.map(({ cents }) => cents);
+    const leftover = totalCents - centsPerUser.reduce((sum, cents) => sum + cents, 0);
+    const ranked = [...shares].sort((first, second) => second.remainder - first.remainder);
+    for (const { index } of ranked.slice(0, leftover)) {
+        centsPerUser[index] += 1;
     }
 
     //repeated code from equal split, mabye turn into helper but still gets the job done. (im to lazy)

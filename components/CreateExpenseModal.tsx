@@ -1,388 +1,209 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import "./CreateExpenseModal.css";
+import { useEffect, useId, useState } from "react";
+import { useAuth } from "@/app/auth/auth";
+import { localDateInputValue } from "@/lib/format";
+import type { HouseholdMember, SplitType } from "@/types";
 import SelectMembers from "./SelectMembers";
 import IconField from "./Field";
 import { ClipboardIcon, DollarIcon, PenIcon } from "./Icons";
+import Modal from "./Modal";
 
-interface GUIElement {
+type ExpenseModalProps = {
     isOpen: boolean;
     onClose: () => void;
     onSuccess: () => void;
     curUserID: string;
     curHouseholdID: string;
-}
-
-type HouseholdMember = {
-    id: string;
-    first_name: string;
-    last_name: string;
-    role: string;
+    recurringOnly?: boolean;
 };
 
-type ExpenseParticipant = {
-    user_id: string;
-    percent: number;
-};
+type Category = { category_id: string; category_name: string };
+type Participant = { user_id: string; percent: number };
+type Frequency = "Once" | "Weekly" | "Monthly";
 
-// Return true only for nums with up to 2 decimal places
-// no 'e' notation, no negative numbers, no currency symbols
-function verifyMoney(value: string) {
-    const regex = /^\d+(\.\d{0,2})?$/;
-
-    console.log(value, regex.test(value));
-    
-    return regex.test(value);
+export default function CreateExpenseModal(props: ExpenseModalProps) {
+    return props.isOpen ? <ExpenseForm {...props} /> : null;
 }
 
-export default function CreateExpenseModal({
-    isOpen,
-    onClose,
-    onSuccess,
-    curUserID: curUserID,
-    curHouseholdID: currentHouseholdId,
-}: GUIElement) {
+function ExpenseForm({
+    onClose, onSuccess, curUserID, curHouseholdID, recurringOnly = false,
+}: ExpenseModalProps) {
+    const token = useAuth().session?.access_token;
+    const id = useId();
     const [name, setName] = useState("");
     const [description, setDescription] = useState("");
-    const [amount, setAmount] = useState(0);
-    const [deadline, setDate] = useState(new Date().toISOString().split("T")[0]);
-    const [splitType, setSplitType] = useState("Equal");
-    const [expenseParticipants, setExpenseParticipants] = useState<ExpenseParticipant[]>([]);
-    const [payerUserId, setPayerUserId] = useState(curUserID);
-    const [paymentType, setPaymentType] = useState("Once");
+    const [amount, setAmount] = useState("");
+    const [date, setDate] = useState(localDateInputValue);
+    const [splitType, setSplitType] = useState<SplitType>("Equal");
+    const [participants, setParticipants] = useState<Participant[]>([]);
+    const [payer, setPayer] = useState(curUserID);
+    const [frequency, setFrequency] = useState<Frequency>(recurringOnly ? "Monthly" : "Once");
     const [categoryId, setCategoryId] = useState("");
-    
-    const [household_members, setMembers] = useState<HouseholdMember[] | null>(null);
-    const [categories, setCategories] = useState<{ category_id: string; category_name: string }[] | null>(null);
-    const [loading, setLoading] = useState(false);
-    const [errors, setErrors] = useState("");
-    const [success, setSuccess] = useState(false);
-    
-    
-    // Fetch household members and categories
-    useEffect(
-        () => {
-            setLoading(true);
-            
-            if (!isOpen || !curUserID || !currentHouseholdId)
-                return;
+    const [members, setMembers] = useState<HouseholdMember[]>();
+    const [categories, setCategories] = useState<Category[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [submitting, setSubmitting] = useState(false);
+    const [error, setError] = useState("");
 
-            let getMembers = async () => {
-                try {
-                    const response = await fetch(`/api/household_members?userId=${curUserID}`);
-                    const data = await response.json();
-                    if (data.error || !data.length) {
-                        setErrors(data.error);
-                        setLoading(false);
-                        return;
-                    }
-                    const members = data;
-                    setMembers(members);
+    useEffect(() => {
+        if (!curUserID || !curHouseholdID || !token) return;
 
-                    if (members.length > 0)
-                        setPayerUserId(members[0].id);
-                }
-                catch {
-                    setErrors("Household members could not be loaded. Please try again.");
-                    setLoading(false);
-                }
-            };
+        const controller = new AbortController();
+        const options = { signal: controller.signal, headers: { Authorization: `Bearer ${token}` } };
 
-            let getCategories = async () => {
-                try {
-                    //explicit 'get' await fetch(`/api/expense_category?household_id=${currentHouseholdId}`);
-                    const url = `/api/expense_category?household_id=${currentHouseholdId}`;
-                    const response = await fetch(url, { method: "GET" });
+        async function loadOptions() {
+            try {
+                const [membersResponse, categoriesResponse] = await Promise.all([
+                    fetch(`/api/households/${curHouseholdID}/members`, options),
+                    fetch(`/api/expense_category?household_id=${curHouseholdID}`, options),
+                ]);
+                if (!membersResponse.ok || !categoriesResponse.ok) throw new Error();
 
-                    const data = await response.json();
-                    console.log("Fetched categories:", data);
-                    const categories = data.categories;
+                const [householdMembers, categoryList] = await Promise.all([
+                    membersResponse.json() as Promise<HouseholdMember[]>,
+                    categoriesResponse.json() as Promise<{ categories: Category[] }>,
+                ]);
+                if (controller.signal.aborted) return;
+                setMembers(householdMembers);
+                setCategories(categoryList.categories);
+                setCategoryId(categoryList.categories[0]?.category_id ?? "");
+            } catch {
+                if (!controller.signal.aborted) setError("Couldn’t load form options. Close and reopen to retry.");
+            } finally {
+                if (!controller.signal.aborted) setLoading(false);
+            }
+        }
 
-                    setCategories(categories);
+        void loadOptions();
+        return () => controller.abort();
+    }, [curUserID, curHouseholdID, token]);
 
-                    if (categories.length > 0)
-                        setCategoryId(categories[0].category_id);
-                    else
-                        setCategoryId("");
-                }
-                catch {
-                    setErrors("Expense categories could not be loaded. Please try again.");
-                }
-                finally {
-                    setLoading(false);
-                }
-            };
-            
-            getMembers();
-            getCategories();
-        }, 
-        [isOpen, curUserID]
-    );
-    
-    
-    if (!isOpen) return null;
-    
-    type CreateExpenseBody = {
-        expense_name: string;
-        description?: string;
-        household_id: string;
-        creator_user_id: string;
-        payer_user_id?: string;
-        amount: string | number;
-        split_type: string;
-        expense_date: string;
-        recurring_expense_id?: string;
-        expense_category_id?: string;
-        excluded_user_ids?: string[];
-        included_user_ids?: string[];
-        participants?: {
-            user_id: string;
-            percent: number;
-        }[];
-    };
-    
-    type CreateRecurringBillBody = {
-        household_id: string;
-        creator_user_id: string;
-        payer_user_id: string;
-        expense_name: string;
-        description: string;
-        amount: string | number;
-        frequency: string;
-        next_expense_date: string;
-        expense_category_id?: string;
-        split_type: string;
-        included_user_ids?: string[];
-        participants?: {
-            user_id: string;
-            percent: number;
-        }[];
+    const isRecurring = frequency !== "Once";
+    const title = recurringOnly ? "Add recurring bill" : "Add expense";
+    const totalPercent = participants.reduce((sum, participant) => sum + participant.percent, 0);
+
+    function toggleParticipant(userId: string) {
+        setParticipants((previous) => previous.some((entry) => entry.user_id === userId)
+            ? previous.filter((entry) => entry.user_id !== userId)
+            : [...previous, { user_id: userId, percent: 0 }]);
     }
 
-    async function submitExpense() {
-        if (!name || !amount) {
-            setErrors("Name and amount required");
+    async function submit(event: React.FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        if (!members || submitting) return;
+        if (!name.trim() || !/^\d+(\.\d{1,2})?$/.test(amount) || Number(amount) <= 0 || !date) {
+            setError("Enter a name, a positive amount with up to two decimal places, and a date.");
             return;
         }
-        let body : CreateExpenseBody | CreateRecurringBillBody;
-
-        let is_recurring: boolean = paymentType !== "Once";
-
-        if (is_recurring) {
-            body = {
-                expense_name: name,
-                amount: amount,
-                household_id: currentHouseholdId,
-                creator_user_id: curUserID,
-                payer_user_id: payerUserId,
-                split_type: splitType,
-                next_expense_date: deadline,
-                frequency: paymentType,
-                description: description || ""
-            };
+        if (!participants.length) {
+            setError("Choose at least one person to split this expense with.");
+            return;
         }
-        else {
-            body = {
-                expense_name: name,
-                amount: amount,
-                household_id: currentHouseholdId,
-                creator_user_id: curUserID,
-                payer_user_id: payerUserId,
-                split_type: splitType,
-                expense_date: deadline,
-                frequency: paymentType,
-                description: description || ""
-            };
+        if (splitType === "Custom" && Math.abs(totalPercent - 100) > 0.0001) {
+            setError("Custom percentages must add up to 100%.");
+            return;
         }
 
-        if (splitType === "Equal")
-            body.included_user_ids = expenseParticipants.map((p) => p.user_id);
-        else
-            body.participants = expenseParticipants;
+        setSubmitting(true);
+        setError("");
 
-        if (categoryId)
-            body.expense_category_id = categoryId;
-
-        let formSubmission = JSON.stringify(body);
+        const body = {
+            expense_name: name.trim(),
+            description,
+            amount,
+            household_id: curHouseholdID,
+            creator_user_id: curUserID,
+            payer_user_id: payer,
+            split_type: splitType,
+            expense_category_id: categoryId || undefined,
+            ...(isRecurring ? { next_expense_date: date, frequency } : { expense_date: date }),
+            ...(splitType === "Custom" ? { participants } : {
+                included_user_ids: participants.map(({ user_id }) => user_id),
+            }),
+        };
 
         try {
-            let res: Response;
-            if (is_recurring) {
-                res = await fetch("/api/recurring_expenses", {
-                    method: "POST",
-                    body: formSubmission
-                });
-            }
-            else {
-                res = await fetch("/api/expenses", {
-                    method: "POST",
-                    body: formSubmission
-                });
-            }
-            
-            const data = await res.json();
-            
-            if (!res.ok) {
-                setErrors(data.error?? "An error occurred");
+            const response = await fetch(isRecurring ? "/api/recurring_expenses" : "/api/expenses", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                body: JSON.stringify(body),
+            });
+            if (!response.ok) {
+                const data = await response.json().catch(() => null);
+                setError(data?.error ?? "Couldn’t save the expense.");
                 return;
             }
-            
-            setSuccess(true);
+            onSuccess();
             onClose();
-        }
-        catch {
-            setErrors("Network error");
+        } catch {
+            setError("Couldn’t connect. Please try again.");
+        } finally {
+            setSubmitting(false);
         }
     }
-    
-    const loading_text = "Loading...";
-    
+
     return (
-        <div className = "overlay">
-        <div className = "modal">
-        
-        <div className = "topbar">
-        
-        <span/>
-        <span>
-            <h2>Add Expense</h2>
-        </span>
-        
-        <span>
-            <button onClick = {onClose}>X</button>
-        </span>
-        </div>
-        {loading ? (<p>{loading_text}</p>) : (
-            <>
-            <div className="hor">
-            <IconField
-            name        = "Name"
-            value       = {name}
-            icon        = {<PenIcon/>}
-            onChange    = {(nameChange) => setName(nameChange.target.value)}
-            />
-            
-            <IconField
-                name        = "Amount"
-                value       = {amount}
-                // no more than 2 decimal places
-                onChange    = {(amount) => verifyMoney(amount.target.value) && setAmount(amount.target.value)}
-                icon        = {<DollarIcon/>}
-                type        = "number"
-            />
-            </div>
-            
-            <div className="hor">
-                <IconField
-                    name        = "Description"
-                    value       = {description}
-                    onChange    = {(descriptionChange) => setDescription(descriptionChange.target.value)}
-                    icon        = {<ClipboardIcon/>}
-                />
-                <div style={{flex: 1}}>
-                <label>Category</label>
-                <select
-                    className   = "cat-input"
-                    name        = "Category"
-                    value       = {categoryId}
-                    onChange    = {(event) => {setCategoryId(event.target.value)}}
-                >
-                {
-                    categories?.map((category) => (
-                        <option key={category.category_id} value={category.category_id}>
-                        {category.category_name}
-                        </option>
-                    ))
-                }
-                </select>
+        <Modal title={title} onClose={onClose} busy={submitting}>
+            {loading && <p role="status">Loading form…</p>}
+            <form className="expense-form" onSubmit={submit}>
+                {members && (
+                    <fieldset className="expense-fields" disabled={submitting}>
+                        <div className="hor">
+                            <IconField name="Name" value={name} icon={<PenIcon />}
+                                onChange={(event) => setName(event.target.value)} />
+                            <IconField name="Amount" value={amount} icon={<DollarIcon />} type="number"
+                                onChange={(event) => setAmount(event.target.value)} />
+                        </div>
+                        <div className="hor">
+                            <IconField name="Description" value={description} icon={<ClipboardIcon />}
+                                onChange={(event) => setDescription(event.target.value)} />
+                            <label>Category
+                                <select className="input" value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
+                                    <option value="">No category</option>
+                                    {categories.map((category) => (
+                                        <option key={category.category_id} value={category.category_id}>{category.category_name}</option>
+                                    ))}
+                                </select>
+                            </label>
+                        </div>
+                        <label>Paid by
+                            <select className="input" value={payer} onChange={(event) => setPayer(event.target.value)}>
+                                {members.map((member) => (
+                                    <option key={member.id} value={member.id}>{member.first_name} {member.last_name}</option>
+                                ))}
+                            </select>
+                        </label>
+                        <div>
+                            <span className="field-label" id={`${id}-method`}>Split method</span>
+                            <div className="split-type" role="group" aria-labelledby={`${id}-method`}>
+                                <button type="button" aria-pressed={splitType === "Equal"} onClick={() => setSplitType("Equal")}>Equal</button>
+                                <button type="button" aria-pressed={splitType === "Custom"} onClick={() => setSplitType("Custom")}>Custom percentages</button>
+                            </div>
+                        </div>
+                        <SelectMembers members={members} participants={participants} showAmounts={splitType === "Custom"}
+                            onToggle={toggleParticipant} onAmountChange={(userId, percent) => setParticipants((previous) =>
+                                previous.map((entry) => entry.user_id === userId ? { ...entry, percent } : entry))} />
+                        {splitType === "Custom" && <p className="modal-description">Total allocated {totalPercent.toFixed(2)}%</p>}
+                        <div className="hor">
+                            <IconField name={isRecurring ? "First due date" : "Expense date"} value={date} type="date"
+                                onChange={(event) => setDate(event.target.value)} />
+                            <label>Recurrence
+                                <select className="input" value={frequency} onChange={(event) => setFrequency(event.target.value as Frequency)}>
+                                    {!recurringOnly && <option value="Once">One-time</option>}
+                                    <option value="Weekly">Weekly</option>
+                                    <option value="Monthly">Monthly</option>
+                                </select>
+                            </label>
+                        </div>
+                    </fieldset>
+                )}
+                {error && <p className="error" role="alert">{error}</p>}
+                <div className="actions">
+                    <button type="button" className="btn-cancel" onClick={onClose} disabled={submitting}>Cancel</button>
+                    <button className="btn-submit" disabled={submitting || !members}>{submitting ? "Saving…" : title}</button>
                 </div>
-                
-            </div>
-            
-            <div>
-                <label>Split Method</label>
-                
-                <div className={`split-type ${splitType === "Custom" ? "slide-right" : ""}`}>
-                    <button className={splitType === "Equal"  ? "active" : ""} onClick={() => setSplitType("Equal")}>Equal</button>
-                    <button className={splitType === "Custom" ? "active" : ""} onClick={() => setSplitType("Custom")}>Custom</button>
-                </div>
-            </div>
-            
-            
-            <label>Paid by</label>
-            <select
-            className = "input"
-            value     = {payerUserId}
-            onChange  = {(event) => {
-                setPayerUserId(event.target.value); 
-                setExpenseParticipants([])
-            }}
-            >
-            {
-                household_members?.map((member) => (
-                    <option key={member.id} value={member.id}>
-                    {member.first_name} {member.last_name}
-                    </option>
-                ))
-            }
-            </select>
-            
-            <SelectMembers
-            members       = {household_members ?? []}
-            selectedIds   = {expenseParticipants.map((participant) => participant.user_id)}
-            showAmounts   = {splitType === "Custom"}
-            onToggleCheck = {(ids) =>
-                setExpenseParticipants(ids.map((id) => ({ user_id: id, percent: 0 })))
-            }
-            onAmountChange = { (userId, percentSplit) => {
-                setExpenseParticipants((prev) =>
-                    Array.from(prev).map((participant) =>
-                        participant.user_id === userId ? { user_id: userId, percent: percentSplit } : participant
-                    )
-                )
-            }}/>
-
-    <div className="hor">
-        <IconField
-            name        = "Deadline"
-            value       = {deadline}
-            onChange    = {(deadline)  => setDate(deadline.target.value)}
-            icon        = {<div />}
-            type        = "date"
-        />
-
-        <div style={{flex: 1}}>
-            <label>Recurrence</label>
-            <select
-                className="cat-input"
-                name        = "Recurrence"
-                value       = {paymentType}
-                onChange    = {(paymentType) => setPaymentType(paymentType.target.value)}
-            >   
-                <option value="Once">One-time</option>
-                <option value="Weekly">Weekly</option>
-                <option value="Monthly">Monthly</option>
-            </select>
-        </div>
-    </div>
-
-
-    
-    { 
-        errors && <p className = "error">{errors}</p>
-    }
-    {
-        success && <p className = "success">Expense created successfully!</p>
-    }
-    
-    <div className = "actions">
-        <button className = "btn-submit" onClick = {submitExpense}>Add Expense</button>
-        <button className = "btn-cancel" onClick = {onClose}>Cancel</button>
-        </div>
-    </>
-)}
-</div>
-</div>
-);
+            </form>
+        </Modal>
+    );
 }

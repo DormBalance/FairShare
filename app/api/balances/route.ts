@@ -1,3 +1,4 @@
+import { authorizeHousehold } from '@/lib/auth_helpers';
 import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -22,6 +23,8 @@ export async function GET(request: NextRequest) {
     }
 
     try {
+        const access = await authorizeHousehold(request, householdID);
+        if (access instanceof NextResponse) return access;
         const expenses = await prisma.expenses.findMany({
             where : { household_id: householdID },
             select : {

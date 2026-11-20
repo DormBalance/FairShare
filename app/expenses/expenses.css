@@ -1,77 +1,44 @@
-/* Expenses Page styles was generated with chat gpt and modified to appeal to desired design */
-
-.expense-page-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 24px;
-}
-
-.expense-page-title {
-    font-size: 28px;
-    font-weight: 700;
-    margin: 0;
-}
-
 .expense-page-controls {
     display: flex;
-    align-items: center;
+    flex-wrap: wrap;
     justify-content: space-between;
-    margin-bottom: 16px;
+    align-items: center;
+    gap: .75rem;
+    margin-bottom: 1rem;
 }
-
 .expense-page-tabs {
     display: flex;
-    border-bottom: 2px solid #e3e3e5;
+    gap: .25rem;
+    padding: .25rem;
+    border: 1px solid var(--line);
+    border-radius: .75rem;
+    background: #e8eee8;
 }
-
-.expenses-tab {
-    padding: 10px 20px;
-    font-size: 14px;
-    font-weight: 500;
-    color: #777;
-    cursor: pointer;
-    border: none;
-    background: none;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -2px;
-    font-family: inherit;
+.expense-page-tabs button {
+    min-height: 2.4rem;
+    padding: .4rem .8rem;
+    border: 0;
+    border-radius: .55rem;
+    color: var(--muted);
+    background: transparent;
+    font-weight: 650;
+    font-size: .875rem;
 }
-
-.active-expense-tab {
-    padding: 10px 20px;
-    font-size: 14px;
-    font-weight: 500;
-    color: #5b3fc8;
-    cursor: pointer;
-    border: none;
-    background: none;
-    border-bottom: 2px solid #5b3fc8;
-    margin-bottom: -2px;
-    font-family: inherit;
-}
-
+.expense-page-tabs button[aria-pressed="true"] { color: var(--ink); background: var(--surface); box-shadow: 0 1px 4px #17241e16; }
 .expense-page-search-bar {
     display: flex;
     align-items: center;
-    gap: 8px;
-    border: 1px solid #e3e3e5;
-    border-radius: 8px;
-    padding: 8px 14px;
-    background: #fff;
-    width: 240px;
+    gap: .5rem;
+    min-height: 2.75rem;
+    padding: 0 .75rem;
+    border: 1px solid var(--line);
+    border-radius: .7rem;
+    color: var(--muted);
+    background: var(--surface);
 }
+.expense-page-search-bar:focus-within { outline: 2px solid var(--accent); }
+.expense-page-search-bar input { width: 100%; min-width: 0; border: 0; background: transparent; outline: 0; color: var(--ink); }
 
-.expense-page-search-bar input {
-    border: none;
-    outline: none;
-    font-size: 14px;
-    font-family: inherit;
-    color: #232323;
-    width: 100%;
-    background: transparent;
-}
-
-.expense-page-search-bar input::placeholder {
-    color: #aaa;
+@media (max-width: 560px) {
+    .expense-page-search-bar { width: 100%; }
 }

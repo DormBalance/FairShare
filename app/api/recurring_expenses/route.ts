@@ -1,3 +1,4 @@
+import { authorizeHousehold } from '@/lib/auth_helpers';
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient, RecurringExpenseFrequency, SplitType } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
@@ -108,8 +109,8 @@ export async function POST(request: NextRequest) {
     if (!expense_name) {
         return NextResponse.json({ error: 'expense_name is required' }, { status: 400 });
     }
-    if (!description || !description.trim()) {
-        return NextResponse.json({ error: 'description is required' }, { status: 400 });
+    if (description != null && typeof description !== "string") {
+        return NextResponse.json({ error: 'description must be text' }, { status: 400 });
     }
     if (!amount) {
         return NextResponse.json({ error: 'amount is required' }, { status: 400 });
@@ -163,6 +164,12 @@ export async function POST(request: NextRequest) {
     }
 
     try {
+        const access = await authorizeHousehold(request, householdID);
+        if (access instanceof NextResponse) return access;
+        if (access.user_id !== creatorUserID) {
+            return NextResponse.json({ error: 'Creator must match the signed-in member' }, { status: 403 });
+        }
+
         let validIDs = await getHouseholdMemberIds(householdID);
 
         if (!validIDs.has(creatorUserID.toString())) {
@@ -235,7 +242,7 @@ export async function POST(request: NextRequest) {
                     creator_user_id: creatorUserID,
                     payer_user_id: payerUserID,
                     expense_name,
-                    description,
+                    description: description?.trim() ?? "",
                     amount: billAmount,
                     frequency: billFrequency,
                     next_expense_date: nextExpenseDate,
@@ -270,7 +277,7 @@ export async function POST(request: NextRequest) {
             const expense = await tx.expenses.create({
                 data: {
                     expense_name,
-                    description: description.trim(),
+                    description: description?.trim() ?? "",
                     household_id: householdID,
                     creator_user_id: creatorUserID,
                     payer_user_id: payerUserID,
@@ -355,6 +362,9 @@ export async function GET(request: NextRequest) {
     }
 
     try {
+        const access = await authorizeHousehold(request, householdID);
+        if (access instanceof NextResponse) return access;
+
         let queryFilter: any = {
             household_id: householdID,
         };

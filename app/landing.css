@@ -1,56 +1,122 @@
-/*same design scheme as the other pages with the help of ai but modified to look similar to the mockups*/
-
 .landing-page {
-    min-height: 100vh;
-    background: #f6f6f7;
+    min-height: 100dvh;
+    background: radial-gradient(ellipse at 86% 24%, #e0eee5 0%, transparent 45%), var(--canvas);
+}
+
+.landing-nav, .landing-content {
+    width: min(100% - 3rem, 76rem);
+    margin-inline: auto;
+}
+
+.landing-nav {
     display: flex;
     align-items: center;
-    justify-content: center;
-    font-family: Arial;
+    justify-content: space-between;
+    padding-block: 1.5rem;
 }
 
-.landing-content {
-    display: flex;
-    flex-direction: column;
+.landing-hero {
+    display: grid;
+    grid-template-columns: 1.25fr 1fr;
     align-items: center;
-    gap: 16px;
+    gap: clamp(2rem, 7vw, 7rem);
+    padding-block: clamp(3rem, 9vw, 8rem);
 }
 
-.landing-logo {
-    color: #1a1a1a;
-    margin-bottom: 8px;
+.landing-copy h1 {
+    margin: 0;
+    color: var(--ink);
+    font-size: clamp(2.8rem, 7vw, 6rem);
+    line-height: .99;
+    letter-spacing: -.075em;
 }
 
-.landing-title {
-    font-size: 64px;
+.landing-copy em {
+    color: var(--accent);
+    font-style: normal;
+}
+
+.landing-copy p {
+    max-width: 28rem;
+    margin: 1.5rem 0 2rem;
+    color: var(--muted);
+    font-size: clamp(1rem, 2vw, 1.2rem);
+    line-height: 1.65;
+}
+
+.landing-example {
+    --hover-lift-shadow: 0 32px 70px #1d3d2938;
+    padding: clamp(1.4rem, 4vw, 2.4rem);
+    border: 1px solid #3e5f51;
+    border-radius: 2rem;
+    color: white;
+    background: radial-gradient(circle at 100% 0%, #375e4c, transparent 65%), #172b23;
+    box-shadow: 0 28px 65px #1d3d2929;
+    animation: reveal .35s ease-out both;
+}
+
+.example-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 3rem;
+    height: 3rem;
+    border-radius: 1rem;
+    color: #d9f4e2;
+    background: #ffffff19;
+}
+
+.example-label {
+    margin: 1.5rem 0 .4rem;
+    color: #bcd6c8;
+}
+
+.landing-example h2 {
+    margin: 0;
+    font-size: 1.15rem;
+}
+
+.example-total {
+    margin-block: .45rem 1.3rem;
+    font-size: clamp(2.6rem, 5vw, 4.2rem);
     font-weight: 700;
-    color: #1f1f1f;
-    margin: 0;
-    letter-spacing: -1px;
+    letter-spacing: -.06em;
 }
 
-.landing-subtitle {
-    font-size: 18px;
-    color: #787878;
-    margin: 0;
+.example-people {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: .6rem;
+    border-top: 1px solid #ffffff30;
+    padding-top: 1rem;
+    color: #c9ded2;
+    font-size: .875rem;
 }
 
-.landing-btn {
-    margin-top: 16px;
-    background: #1a1a1a;
-    color: #ffffff;
-    border: none;
-    border-radius: 12px;
-    padding: 16px 48px;
-    font-size: 18px;
-    font-weight: 600;
-    font-family: Arial;
-    cursor: pointer;
-    text-decoration: none;
-    transition: opacity 0.15s;
-    display: inline-block;
+.example-people strong {
+    display: block;
+    margin-top: .3rem;
+    color: white;
+    font-variant-numeric: tabular-nums;
 }
 
-.landing-btn:hover {
-    opacity: 0.85;
+.landing-features {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem;
+    padding-bottom: 2rem;
+}
+
+.landing-features section {
+    padding: 1.35rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--surface);
+}
+
+.landing-features h2 { margin: .8rem 0 .4rem; font-size: 1.05rem; }
+.landing-features p { margin: 0; color: var(--muted); line-height: 1.55; }
+
+@media (max-width: 720px) {
+    .landing-nav, .landing-content { width: calc(100% - 2rem); }
+    .landing-hero, .landing-features { grid-template-columns: 1fr; }
 }

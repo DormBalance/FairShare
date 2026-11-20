@@ -1,147 +1,95 @@
 "use client";
-import { useEffect, useState } from "react";
-import { useAuth } from "@/app/auth/auth";
+
+import { useCallback, useEffect, useState } from "react";
+import { Plus, RefreshCcw } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
-import { getRecurringExpenses } from "@/lib/api";
-import { GetRecurringExpenseResponse } from "@/types";
+import HouseholdState from "@/components/HouseholdState";
 import CreateExpenseModal from "@/components/CreateExpenseModal";
-import "../dashboard/dashboard.css";
-import "./recurring.css";
-
-function formatDate(dateString: string): string {
-    return new Date(dateString).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-    });
-}
-
-function formatCurrency(amount: number): string {
-    return new Intl.NumberFormat("en-US", {
-        style: "currency",
-        currency: "USD",
-    }).format(amount);
-}
+import { getRecurringExpenses } from "@/lib/api";
+import { formatDate, formatCurrency } from "@/lib/format";
+import { useHousehold } from "@/lib/useHousehold";
+import type { GetRecurringExpenseResponse } from "@/types";
 
 export default function RecurringPage() {
-    const { session, user } = useAuth();
-    let [householdID, setHouseholdID] = useState("");
-    let [currUser, setCurrUser] = useState("");
-    let [recurringExpenses, setRecurringExpenses] = useState<GetRecurringExpenseResponse[]>([]);
-    let [loading, setLoading] = useState<boolean>(true);
-    let [error, setError] = useState<string>("");
-    let [showCreateModal, setShowCreateModal] = useState<boolean>(false);
+    const context = useHousehold();
+    const householdId = context.status === "ready" ? context.household.id : "";
+    const memberId = context.status === "ready" ? context.member.id : "";
+    const [bills, setBills] = useState<GetRecurringExpenseResponse[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
+    const [showModal, setShowModal] = useState(false);
 
-    // Copied from dashboard/page.tsx pattern — fetches household and DB user ID via API
-    useEffect(() => {
-        if (!session?.access_token) return;
-        async function loadHousehold() {
-            const res = await fetch("/api/households", {
-                headers: { "Authorization": `Bearer ${session.access_token}` },
-            });
-            if (!res.ok) return;
-            const data = await res.json();
-            if (data.length === 0) return;
-            const household = data[0];
-            setHouseholdID(String(household.id));
-            const membersRes = await fetch(`/api/households/${household.id}/members`, {
-                headers: { "Authorization": `Bearer ${session.access_token}` },
-            });
-            if (!membersRes.ok) return;
-            const members = await membersRes.json();
-            const me = members.find((m: any) => m.email === user?.email);
-            if (me) setCurrUser(String(me.id));
-        }
-        loadHousehold();
-    }, [session]);
-
-    async function loadRecurringExpenses() {
-        if (!householdID) return;
+    const refresh = useCallback(async (signal?: AbortSignal) => {
+        if (!householdId) return;
         setLoading(true);
         setError("");
-
-        let result = await getRecurringExpenses(householdID);
-
-        if (result.success === false) {
-            setError(result.error);
-            setLoading(false);
-            return;
-        }
-
-        setRecurringExpenses(result.data);
+        const result = await getRecurringExpenses(householdId);
+        if (signal?.aborted) return;
+        if (result.success === false) setError(result.error || "We couldn’t load recurring bills.");
+        else setBills(result.data);
         setLoading(false);
-    }
+    }, [householdId]);
 
-    useEffect(() => { loadRecurringExpenses() }, [householdID]);
+    useEffect(() => {
+        const controller = new AbortController();
+        void refresh(controller.signal);
+        return () => controller.abort();
+    }, [refresh]);
 
     return (
         <DashboardLayout>
-            <div className="page-header">
-                <h1 className="page-title">Recurring Expenses</h1>
-                <div className="page-features">
-                    <button className="add-expense-btn"
-                        onClick={() => setShowCreateModal(true)}>
-                        Add Recurring Expense
-                    </button>
-
-                </div>
-            </div>
-
-            {error && <p style={{ color: "red", marginBottom: 16}}>{error}</p>}
-            {loading && <p style={{ color: "#888", marginBottom: 16}}>Loading...</p>}
-
-            <div className="recent-expenses-card">
-                <div className="recent-expenses-row recent-expenses-row-header">
-                    <span>Name</span>
-                    <span>Amount</span>
-                    <span>Frequency</span>
-                    <span>Next Due</span>
-                    <span>Payer</span>
-                    <span>Status</span>
-                </div>
-                {recurringExpenses.map((expense) => (
-                    <div className="recent-expenses-row"
-                        key={expense.id}
-                        
-                        style={{ gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 0.8fr"}}>
-                            <span>{expense.expense_name}</span>
-                            
-                            <span>{formatCurrency(Number(expense.amount))}</span>
-                            
-                            <span>
-                                <span className="frequency-badge">{expense.frequency}</span>
-                            </span>
-                            
-                            <span>{formatDate(expense.next_expense_date)}</span>
-                            
-                            <span>
-                                {expense.recurring_expense_payer.first_name}
-                                {" "}
-                                {expense.recurring_expense_payer.last_name}
-                            </span>
-
-                            <span className={expense.is_active
-                                ? "status-badge-active"
-                                : "status-badge-inactive"}>
-                                {expense.is_active ? "Active" : "Inactive"}
-                            </span>
-                    </div>
-                ))}
-
-                {recurringExpenses.length === 0 && !loading && (
-                    <p style={{ padding: "24px 28px", color: "#888"}}>
-                        No recurring expenses yet.
-                        </p>
-                )}
-            </div>
-
-            <CreateExpenseModal
-                isOpen         = {showCreateModal}
-                onClose        = {() => setShowCreateModal(false)}
-                onSuccess      = {loadRecurringExpenses}
-                curUserID      = {currUser}
-                curHouseholdID = {householdID}
-            />
+            <header className="page-header">
+                <div><h1 className="page-title">Recurring bills</h1><p>Keep track of regular household costs and due dates.</p></div>
+                {context.status === "ready" && <button className="add-expense-btn" onClick={() => setShowModal(true)}>
+                    <Plus size={18} aria-hidden="true" /> Add recurring bill
+                </button>}
+            </header>
+            {context.status !== "ready" ? <HouseholdState status={context.status} /> : (
+                <>
+                    {loading ? <div className="page-skeleton" role="status">Loading recurring bills…</div> : error ? (
+                        <div className="page-alert" role="alert">{error} <button onClick={() => void refresh()}>Try again</button></div>
+                    ) : (
+                        <section className="recent-expenses-card hover-lift">
+                            <div className="recent-expenses-header"><h2 className="recent-expenses-title">Bill schedule</h2></div>
+                            {bills.length === 0 ? (
+                                <div className="empty-state">
+                                    <span className="stat-icon"><RefreshCcw size={20} aria-hidden="true" /></span>
+                                    <p>No recurring bills yet.</p>
+                                </div>
+                            ) : (
+                                <div className="table-scroll" role="region" aria-label="Bill schedule" tabIndex={0}>
+                                    <table className="activity-table">
+                                        <thead><tr>
+                                            <th scope="col">Bill</th><th scope="col">Amount</th><th scope="col">Frequency</th>
+                                            <th scope="col">Next due</th><th scope="col">Status</th>
+                                        </tr></thead>
+                                        <tbody>{bills.map((bill) => (
+                                            <tr key={bill.id}>
+                                                <td><div className="expense-identity">
+                                                    <span className="expense-icon"><RefreshCcw size={17} aria-hidden="true" /></span>
+                                                    <div><strong>{bill.expense_name}</strong>
+                                                        <small>Paid by {bill.recurring_expense_payer
+                                                            ? `${bill.recurring_expense_payer.first_name} ${bill.recurring_expense_payer.last_name}`
+                                                            : "Former member"}</small>
+                                                    </div>
+                                                </div></td>
+                                                <td className="table-amount">{formatCurrency(Number(bill.amount))}</td>
+                                                <td>{bill.frequency}</td>
+                                                <td>{formatDate(bill.next_expense_date)}</td>
+                                                <td><span className={bill.is_active ? "status-owed" : "status-settled"}>
+                                                    {bill.is_active ? "Active" : "Inactive"}
+                                                </span></td>
+                                            </tr>
+                                        ))}</tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </section>
+                    )}
+                    {showModal && <CreateExpenseModal isOpen recurringOnly onClose={() => setShowModal(false)}
+                        onSuccess={() => void refresh()} curUserID={memberId} curHouseholdID={householdId} />}
+                </>
+            )}
         </DashboardLayout>
-    )
+    );
 }
